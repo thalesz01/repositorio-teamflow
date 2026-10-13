@@ -110,3 +110,23 @@
   .diff-modal-foot .hint { display: none; }
   .diff-modal-foot { justify-content: flex-end; }
 }
+
+/* Line comments: the "+" appears on hover or focus, and always on touch screens. */
+.diff-code .diff-line-comment { width: 34px; padding: 0 4px; text-align: center; }
+.diff-add-comment { width: 22px; height: 22px; padding: 0; line-height: 1; font: 600 15px var(--font); color: var(--brand); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px; opacity: 0; cursor: pointer; }
+.diff-code tr:hover .diff-add-comment, .diff-add-comment:focus-visible { opacity: 1; }
+@media (hover: none) { .diff-add-comment { opacity: 1; } }
+.diff-comment-row td { padding: 8px 14px 10px 100px; background: var(--surface-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font-family: var(--font); }
+.diff-comment { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.diff-comment p { flex: 1 1 240px; min-width: 0; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
+.diff-comment-editor { display: grid; gap: 8px; max-width: 640px; }
+.diff-comment-editor textarea { font: 13px/1.5 var(--font); }
+@media (max-width: 640px) { .diff-comment-row td { padding-left: 14px; } }
+
+/* Review modal footer: general note, counters and the two decisions. */
+.review-foot { display: grid; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--border); background: var(--surface); }
+.review-foot textarea { font: 13px/1.5 var(--font); }
+.review-foot-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.review-foot-row .spacer { flex: 1; }
+.review-foot .count { color: var(--text-3); font-size: 13px; }
+@media (max-width: 640px) { .review-foot { padding: 10px 14px; } }

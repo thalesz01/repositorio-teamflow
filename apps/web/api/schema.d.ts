@@ -343,6 +343,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkspaceDto"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/v1/executions/{id}/repository-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RepositoryTokenInput"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CheckoutGrant"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organizationId}/projects": {
         parameters: {
             query?: never;
@@ -1085,6 +1161,46 @@ export interface paths {
         trace?: never;
     };
     "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/executions/{executionId}/review/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                    taskId: string;
+                    executionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReviewStatus"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/executions/{executionId}/review/complete": {
         parameters: {
             query?: never;
             header?: never;
@@ -2358,47 +2474,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/internal/v1/executions/{id}/repository-token": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["RepositoryTokenInput"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["CheckoutGrant"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/organizations/{organizationId}/projects/{projectId}/profiles/machine": {
         parameters: {
             query?: never;
@@ -3278,6 +3353,8 @@ export interface components {
             allowedTransitions: components["schemas"]["TaskStage"][];
             /** Format: uuid */
             analysisId?: null | string;
+            folderPath?: null | string;
+            baseBranch?: null | string;
         };
         TaskInput: {
             title: string;
@@ -3288,6 +3365,9 @@ export interface components {
             dependencyIds: string[];
             /** Format: uuid */
             analysisId?: null | string;
+            folderPath?: null | string;
+            baseBranch?: null | string;
+            stage?: null | components["schemas"]["TaskStage"];
         };
         /** @enum {unknown} */
         TaskStage: "intake" | "analysis" | "ready" | "execution" | "review" | "awaitingMerge" | "done" | "blocked" | "failed" | "cancelled";
@@ -3305,6 +3385,12 @@ export interface components {
             stage: components["schemas"]["TaskStage"];
             /** Format: uuid */
             version: string;
+        };
+        WorkspaceDto: {
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            projectId: string;
         };
     };
     responses: never;

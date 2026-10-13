@@ -22,24 +22,26 @@ export function DirectoryPicker({ path, onSelect, onClose }: { path: string; onS
   }, [path, directory, retry]);
   function close() { dialog.current?.close(); onClose(); }
   function navigate(next: string | null) { setBusy(true); setError(null); setListing(null); setDirectory(next); }
-  return <dialog className="modal modal-wide" ref={dialog} aria-labelledby="directory-picker-title" onCancel={event => { event.preventDefault(); close(); }}>
+  return <dialog className="modal modal-wide" ref={dialog} aria-labelledby="directory-picker-title" // A nested dialog may sit over another modal; handle Escape here so the dialog below stays open.
+    onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); } }}
+    onCancel={event => { event.preventDefault(); close(); }}>
     <div className="modal-inner">
       <div className="modal-head"><span className="icon-tile" aria-hidden="true"><Icon name="folder" /></span>
-        <div><h2 id="directory-picker-title">Escolher repositório local</h2><p className="hint">Navegue pelas pastas autorizadas neste computador. Nenhum arquivo é enviado.</p></div>
+        <div><h2 id="directory-picker-title">Escolher a pasta do projeto</h2><p className="hint">Navegue pelas pastas deste computador. Nenhum arquivo é enviado.</p></div>
         <button type="button" className="icon ghost sm" aria-label="Fechar" onClick={close}><Icon name="close" size="sm" /></button></div>
       {!error && <div className="actions"><button type="button" className="sm" disabled={busy || directory === null} onClick={() => navigate(null)}>Unidades e pastas</button>
         <button type="button" className="sm" disabled={busy || !listing?.parentPath} onClick={() => navigate(listing?.parentPath ?? null)}><Icon name="arrowLeft" size="sm" />Voltar uma pasta</button></div>}
       {directory && <p className="dir-location">{directory}</p>}
       {busy && <p role="status" className="loading-line"><span className="spinner" aria-hidden="true" />Carregando pastas…</p>}
-      {error && <div role="alert" className="alert danger"><Icon name="alert" size="sm" /><div><strong>{notConfigured ? "Nenhuma pasta liberada para este projeto" : "Não foi possível carregar as pastas"}</strong>
-        <p>{notConfigured ? "A permissão de acesso ao computador é configurada por equipe e projeto. Criar um projeto não copia essa permissão de outro workspace." : error}</p>
+      {error && <div role="alert" className="alert danger"><Icon name="alert" size="sm" /><div><strong>{notConfigured ? "Nenhuma pasta liberada neste servidor" : "Não foi possível carregar as pastas"}</strong>
+        <p>{notConfigured ? "O administrador precisa liberar as pastas no servidor: Local:BrowseAllDrives e Local:AllowRepositorySelection em apps/api/appsettings.Local.json." : error}</p>
         <p><button type="button" className="sm" onClick={() => { setError(null); setBusy(true); setRetry(value => value + 1); }}>Tentar novamente</button></p></div></div>}
       {!busy && listing && <>
         <ul className="dir-list">{(directory === null ? listing.roots.map(root => ({ name: root, path: root })) : listing.directories).map(item =>
           <li key={item.path}><button type="button" onClick={() => navigate(item.path)}><Icon name="folder" size="sm" />{item.name}<span className="chev" aria-hidden="true"><Icon name="chevronRight" size="sm" /></span></button></li>)}</ul>
         {directory && !listing.directories.length && <p className="hint">Esta pasta não possui subpastas disponíveis.</p>}
         {listing.truncated && <p className="hint">Mostrando as primeiras 200 pastas.</p>}
-        {directory && <p className="hint">{listing.canConnect ? "Repositório Git disponível para conexão neste projeto." : listing.isRepository ? "Você pode selecionar esta pasta, mas a conexão exige autorização neste projeto." : "Você pode usar esta pasta mesmo sem Git. A base será preparada ao iniciar uma tarefa."}</p>}
+        {directory && <p className="hint">{listing.isRepository ? "Repositório Git." : "Pasta sem Git: a base será preparada na primeira execução, sem alterar seus arquivos."}</p>}
         <div className="modal-actions"><button type="button" onClick={close}>Cancelar</button><button className="primary" type="button" disabled={!listing.currentPath} onClick={() => { if (listing.currentPath) { dialog.current?.close(); onSelect(listing.currentPath); } }}>Usar esta pasta</button></div>
       </>}
     </div>

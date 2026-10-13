@@ -1,36 +1,49 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { PlanningPanel } from "./PlanningPanel";
+import { useCallback, useEffect, useState } from "react";
+import { ReviewDialog } from "../review/ReviewDialog";
 import { MemoryPanel } from "./MemoryPanel";
-import { IntegrationPanel } from "./IntegrationPanel";
+import { NewTaskDialog, type NewTask } from "./NewTaskDialog";
 import { SetupChecklist } from "./SetupChecklist";
 import { TaskDrawer, type DrawerTab } from "./TaskDrawer";
-import { Alert, Avatar, EmptyState, Icon, PageHeader } from "./ui";
+import { Alert, EmptyState, Icon, PageHeader } from "./ui";
 import { api, errorMessage, listAll, stageLabels, type Schema, type Stage, type TaskItem } from "./api";
 
-export type View = "board" | "planning" | "memory" | "settings";
-type Drawer = { kind: "new" } | { kind: "task"; id: string; tab: DrawerTab } | null;
+export type View = "board" | "memory";
+type Lane = "created" | "running" | "fix" | "done" | "cancelled";
+type Drawer = { id: string; tab: DrawerTab } | null;
+type Review = { taskId: string; executionId: string } | null;
 
-// Main flow first; exception stages only appear when they hold work (or while dragging, so they stay reachable).
-const flowStages: Stage[] = ["intake", "analysis", "ready", "execution", "review", "awaitingMerge", "done"];
-const exceptionStages: Stage[] = ["blocked", "failed", "cancelled"];
+// Four steps for the person (create, run, fix, conclude); the stages behind them keep their rules in the API.
+const lanes: { id: Lane; stage: Stage; label: string; hint: string }[] = [
+  { id: "created", stage: "ready", label: "Criadas", hint: "Prontas para executar" },
+  { id: "running", stage: "execution", label: "Executando", hint: "O agente está trabalhando" },
+  { id: "fix", stage: "review", label: "Corrigir", hint: "Revise, comente e conclua" },
+  { id: "done", stage: "done", label: "Concluídas", hint: "Alterações aplicadas na pasta" },
+  { id: "cancelled", stage: "cancelled", label: "Canceladas", hint: "" },
+];
+const laneOf = (stage: Stage): Lane => stage === "execution" ? "running" : stage === "review" || stage === "awaitingMerge" ? "fix"
+  : stage === "done" ? "done" : stage === "cancelled" ? "cancelled" : "created";
+// Tasks that predate the four-step flow may still sit before "ready"; running them walks the remaining stages.
+const towardsReady: Partial<Record<Stage, Stage>> = { intake: "analysis", analysis: "ready", blocked: "analysis", failed: "ready" };
+const folderName = (path: string | null | undefined) => path ? path.split(/[\\/]/).filter(Boolean).pop() ?? path : null;
 
-export function TaskBoard({ project, members, canManageIntegrations, view, onViewChange }: {
-  project: Schema["ProjectDto"]; members: Schema["MemberDto"][]; canManageIntegrations: boolean; view: View; onViewChange: (view: View) => void;
-}) {
-  const path = `/organizations/${project.organizationId}/projects/${project.id}/tasks`;
+export function TaskBoard({ project, view }: { project: Schema["ProjectDto"]; view: View }) {
   const projectPath = `/organizations/${project.organizationId}/projects/${project.id}`;
+  const path = `${projectPath}/tasks`;
   const [profileId, setProfileId] = useState("");
+  const [codexReady, setCodexReady] = useState(false);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [drawer, setDrawer] = useState<Drawer>(null);
+  const [creating, setCreating] = useState(false);
+  const [review, setReview] = useState<Review>(null);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dragging, setDragging] = useState<string | null>(null);
-  const [dropStage, setDropStage] = useState<Stage | null>(null);
   const [keys] = useState(() => new Map<string, string>());
+
+  const refresh = useCallback(async () => { setTasks(await listAll<TaskItem>(path + "/")); }, [path]);
   useEffect(() => {
     const controller = new AbortController();
     listAll<TaskItem>(path + "/", controller.signal).then(setTasks)
@@ -38,137 +51,151 @@ export function TaskBoard({ project, members, canManageIntegrations, view, onVie
       .finally(() => { if (!controller.signal.aborted) { setBusy(false); setLoaded(true); } });
     return () => controller.abort();
   }, [path]);
-  const selected = drawer?.kind === "task" ? tasks.find(task => task.id === drawer.id) ?? null : null;
+  // Work finishes while nobody is looking: poll quietly while something is running.
+  const running = tasks.some(task => task.stage === "execution");
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => { void refresh().catch(() => undefined); }, 5000);
+    return () => clearInterval(timer);
+  }, [running, refresh]);
+  // The Codex binding gives executions their model profile; it needs the machine checks of the checklist to pass first.
+  useEffect(() => {
+    if (!codexReady) return;
+    const controller = new AbortController();
+    api<Schema["ProfileDto"]>(`${projectPath}/profiles/machine`, { method: "POST", signal: controller.signal })
+      .then(binding => { if (!controller.signal.aborted) setProfileId(binding.id); })
+      .catch(failure => { if (!controller.signal.aborted) setError(errorMessage(failure)); });
+    return () => controller.abort();
+  }, [codexReady, projectPath]);
+
+  const selected = drawer ? tasks.find(task => task.id === drawer.id) ?? null : null;
   const needle = query.trim().toLocaleLowerCase("pt-BR");
   const filtered = needle ? tasks.filter(task => `${task.title} ${task.description}`.toLocaleLowerCase("pt-BR").includes(needle)) : tasks;
-  const count = (stages: Stage[]) => tasks.filter(task => stages.includes(task.stage)).length;
-  const memberName = (id: string | null | undefined) => members.find(member => member.userId === id)?.email;
+  const count = (lane: Lane) => tasks.filter(task => laneOf(task.stage) === lane).length;
 
   async function perform(action: () => Promise<void>) {
     setBusy(true); setError(null);
     try { await action(); }
     catch (failure) { setError(errorMessage(failure)); }
     finally {
-      try { setTasks(await listAll<TaskItem>(path + "/")); }
+      try { await refresh(); }
       catch (failure) { setError(previous => previous ?? errorMessage(failure)); }
       setBusy(false);
     }
   }
 
+  async function runTask(task: TaskItem) {
+    let current = task;
+    for (let next = towardsReady[current.stage]; next; next = towardsReady[current.stage]) {
+      current = await api<TaskItem>(`${path}/${current.id}/transition`, { method: "POST", body: JSON.stringify({ stage: next, version: current.version } satisfies Schema["TransitionInput"]) });
+    }
+    const versionKey = `${current.id}:${current.version}:${profileId}`;
+    const key = keys.get(versionKey) ?? crypto.randomUUID();
+    keys.set(versionKey, key);
+    const input: Schema["ExecutionInput"] = { version: current.version, maxDurationSeconds: 900, maxAttempts: 3, maxSteps: 50, maxCostUsd: 5, agentProfileId: profileId || null };
+    await api<Schema["ExecutionDto"]>(`${path}/${current.id}/executions/`, { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify(input) });
+  }
+
+  async function create(input: NewTask, run: boolean) {
+    // The dialog shows failures itself, so this does not swallow them.
+    setError(null);
+    try {
+      const task = await api<TaskItem>(path + "/", { method: "POST", body: JSON.stringify({ ...input, assigneeId: null, dependencyIds: [], stage: "ready" } satisfies Schema["TaskInput"]) });
+      if (run) await runTask(task);
+    } finally { try { await refresh(); } catch (failure) { setError(errorMessage(failure)); } }
+  }
+
   async function save(input: Schema["TaskInput"]) {
+    if (!selected) return;
     await perform(async () => {
-      const task = await api<TaskItem>(selected ? `${path}/${selected.id}` : path + "/", {
-        method: selected ? "PUT" : "POST",
-        body: JSON.stringify(selected ? { ...input, version: selected.version } satisfies Schema["TaskUpdate"] : input),
-      });
-      setDrawer({ kind: "task", id: task.id, tab: "details" });
+      await api<TaskItem>(`${path}/${selected.id}`, { method: "PUT", body: JSON.stringify({ ...input, version: selected.version } satisfies Schema["TaskUpdate"]) });
     });
   }
 
-  async function move(task: TaskItem, stage: Stage) {
+  async function cancelTask(task: TaskItem) {
     await perform(async () => {
-      if (stage === "execution") {
-        const versionKey = `${task.id}:${task.version}:${profileId}`;
-        const key = keys.get(versionKey) ?? crypto.randomUUID();
-        keys.set(versionKey, key);
-        const input: Schema["ExecutionInput"] = { version: task.version, maxDurationSeconds: 900, maxAttempts: 3, maxSteps: 50, maxCostUsd: 5, agentProfileId: profileId || null };
-        await api<Schema["ExecutionDto"]>(`${path}/${task.id}/executions/`, {
-          method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify(input),
-        });
-      } else {
-        await api<TaskItem>(`${path}/${task.id}/transition`, {
-          method: "POST", body: JSON.stringify({ stage, version: task.version } satisfies Schema["TransitionInput"]),
-        });
-      }
+      await api<TaskItem>(`${path}/${task.id}/transition`, { method: "POST", body: JSON.stringify({ stage: "cancelled", version: task.version } satisfies Schema["TransitionInput"]) });
     });
   }
 
-  const stages = [...flowStages, ...exceptionStages.filter(stage => dragging || tasks.some(task => task.stage === stage))];
-  const inReview = count(["review", "awaitingMerge"]);
+  async function openReview(task: TaskItem) {
+    setError(null);
+    try {
+      const latest = await api<Schema["PageResultOfExecutionDto"]>(`${path}/${task.id}/executions/?page=1&pageSize=1`);
+      const execution = latest.items[0];
+      if (!execution) throw new Error("Esta tarefa ainda não tem execução para revisar.");
+      setReview({ taskId: task.id, executionId: execution.id });
+    } catch (failure) { setError(errorMessage(failure)); }
+  }
 
   return <>
     <section aria-label="Quadro de tarefas" hidden={view !== "board"} className="view">
-      <PageHeader eyebrow={project.name} title="Quadro" description="Da primeira ideia ao código aprovado. Arraste um cartão ou abra-o para ver os detalhes."
+      <PageHeader eyebrow="Suas tarefas" title="Quadro" description="Crie, execute, corrija e conclua. Cada tarefa leva a pasta onde o código será alterado."
         actions={<>
           <label className="search"><span className="sr-only">Buscar tarefas</span><Icon name="search" size="sm" /><input type="search" placeholder="Buscar tarefas…" value={query} onChange={event => setQuery(event.target.value)} /></label>
           <button className="icon" aria-label="Atualizar quadro" title="Atualizar quadro" onClick={() => perform(async () => {})} disabled={busy}><Icon name="refresh" /></button>
-          <button className="primary" onClick={() => setDrawer({ kind: "new" })} disabled={busy}><Icon name="plus" size="sm" />Nova tarefa</button>
+          <button className="primary" onClick={() => setCreating(true)} disabled={busy}><Icon name="plus" size="sm" />Nova tarefa</button>
         </>} />
-      <div className="board-summary" aria-label="Resumo do projeto">
+      <div className="board-summary" aria-label="Resumo">
         <span><strong>{loaded ? tasks.length : "—"}</strong> tarefa(s)</span>
-        <span><strong>{loaded ? count(["execution"]) : "—"}</strong> em execução</span>
-        <span><strong>{loaded ? inReview : "—"}</strong> em revisão e merge</span>
-        <span><strong>{loaded ? count(["done"]) : "—"}</strong> concluída(s)</span>
+        <span><strong>{loaded ? count("running") : "—"}</strong> executando</span>
+        <span><strong>{loaded ? count("fix") : "—"}</strong> para corrigir ou concluir</span>
+        <span><strong>{loaded ? count("done") : "—"}</strong> concluída(s)</span>
         <span className="sync" role="status" aria-live="polite">{busy ? <><span className="spinner" aria-hidden="true" />Sincronizando…</> : needle ? `${filtered.length} de ${tasks.length} no filtro` : ""}</span>
       </div>
-      <SetupChecklist organizationId={project.organizationId} projectId={project.id} active={view === "board"} canManage={canManageIntegrations} onOpenSettings={() => onViewChange("settings")} />
+      <SetupChecklist organizationId={project.organizationId} projectId={project.id} active={view === "board"} onCodex={setCodexReady} />
       {error && <Alert>{error}</Alert>}
-      {loaded && !tasks.length ? <div className="card"><EmptyState icon="board" title="Seu quadro está vazio" action={<button className="primary" onClick={() => setDrawer({ kind: "new" })}><Icon name="plus" size="sm" />Criar a primeira tarefa</button>}>
-        Crie uma tarefa para começar, ou use <strong>Demandas</strong> para transformar um problema em uma tarefa com critérios de aceitação.</EmptyState></div>
+      {loaded && !tasks.length ? <div className="card"><EmptyState icon="board" title="Nenhuma tarefa ainda" action={<button className="primary" onClick={() => setCreating(true)}><Icon name="plus" size="sm" />Criar a primeira tarefa</button>}>
+        Descreva o que precisa mudar e escolha a pasta do código. O agente faz o trabalho e você revisa antes de concluir.</EmptyState></div>
         : <div className="board" aria-label="Etapas do fluxo — role horizontalmente para ver todas" tabIndex={0} aria-busy={busy}>
-          {stages.map(stage => {
-            const items = filtered.filter(task => task.stage === stage);
-            const collapsed = loaded && !items.length && !dragging;
-            return <section className={`lane${dropStage === stage ? " drop-target" : ""}${collapsed ? " collapsed" : ""}`} data-stage={stage} key={stage} aria-label={stageLabels[stage]}
-              onDragOver={event => { event.preventDefault(); setDropStage(stage); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropStage(null); }}
-              onDrop={event => {
-                event.preventDefault(); setDropStage(null); setDragging(null);
-                if (busy) return;
-                const task = tasks.find(item => item.id === event.dataTransfer.getData("text/plain"));
-                if (task && task.stage !== stage) void move(task, stage);
-              }}>
-              <div className="lane-head"><h2><span className="lane-dot" aria-hidden="true" />{stageLabels[stage]}</h2><span className="lane-count" aria-label={`${items.length} tarefa(s)`}>{items.length}</span></div>
+          {lanes.filter(lane => lane.id !== "cancelled" || count("cancelled") > 0).map(lane => {
+            const items = filtered.filter(task => laneOf(task.stage) === lane.id);
+            return <section className="lane" data-stage={lane.stage} key={lane.id} aria-label={lane.label}>
+              <div className="lane-head"><h2><span className="lane-dot" aria-hidden="true" />{lane.label}</h2><span className="lane-count" aria-label={`${items.length} tarefa(s)`}>{items.length}</span></div>
               <div className={`lane-body${!loaded ? " loading-lanes" : ""}`}>
                 {!loaded && <><div className="skeleton" /><div className="skeleton" /></>}
-                {loaded && !items.length && <p className="lane-empty">{needle ? "Nada neste filtro" : dragging ? "Solte aqui" : "Nenhuma tarefa"}</p>}
-                {items.map(task => <TaskCard key={task.id} task={task} busy={busy} selected={selected?.id === task.id} assignee={memberName(task.assigneeId)}
-                  draggable={!busy && task.allowedTransitions.length > 0} isDragging={dragging === task.id}
-                  onDragStart={() => setDragging(task.id)} onDragEnd={() => { setDragging(null); setDropStage(null); }}
-                  onOpen={() => setDrawer({ kind: "task", id: task.id, tab: "details" })}
-                  onReview={() => setDrawer({ kind: "task", id: task.id, tab: "executions" })}
-                  onRun={() => void move(task, "execution")} />)}
+                {loaded && !items.length && <p className="lane-empty">{needle ? "Nada neste filtro" : lane.hint || "Nenhuma tarefa"}</p>}
+                {items.map(task => <TaskCard key={task.id} task={task} busy={busy} canRun={codexReady}
+                  onOpen={() => setDrawer({ id: task.id, tab: "details" })}
+                  onProgress={() => setDrawer({ id: task.id, tab: "executions" })}
+                  onRun={() => void perform(() => runTask(task))}
+                  onReview={() => void openReview(task)} />)}
               </div>
             </section>;
           })}
         </div>}
     </section>
-    <section className="view" aria-label="Demandas" hidden={view !== "planning"}>
-      <PageHeader eyebrow="Planejamento" title="Analisar demandas" description="Transforme um problema em uma proposta de tarefa usando o contexto validado do projeto." />
-      <PlanningPanel path={projectPath} profileId={profileId} onCreated={task => { setTasks(items => [...items, task]); setDrawer({ kind: "task", id: task.id, tab: "details" }); onViewChange("board"); }} />
-    </section>
     <section className="view" aria-label="Biblioteca de memória" hidden={view !== "memory"}>
-      <PageHeader eyebrow="Conhecimento da equipe" title="Memória do projeto" description="Guarde decisões, valide fontes e reutilize o que a equipe já aprendeu." />
+      <PageHeader eyebrow="Conhecimento" title="Memória do projeto" description="Guarde decisões, valide fontes e reutilize o que já foi aprendido." />
       <MemoryPanel path={projectPath} />
     </section>
-    <section className="view" aria-label="Configurações" hidden={view !== "settings"}>
-      <PageHeader eyebrow="Ambiente de trabalho" title="Configurações do projeto" description="Escolha a pasta do código, confira o Git e acompanhe o Codex instalado no computador." />
-      <IntegrationPanel path={projectPath} canManage={canManageIntegrations} selectedProfile={profileId} onSelect={setProfileId} />
-    </section>
-    {drawer && <TaskDrawer error={error} task={selected} tasks={tasks} members={members} busy={busy} path={path}
-      tab={drawer.kind === "task" ? drawer.tab : "details"} onTab={tab => drawer.kind === "task" && setDrawer({ ...drawer, tab })}
-      onSave={save} onMove={move} onClose={() => setDrawer(null)}
-      onCancelExecution={executionId => perform(async () => { await api<Schema["ExecutionDto"]>(`${path}/${selected?.id}/executions/${executionId}/cancel`, { method: "POST" }); })} />}
+    {creating && <NewTaskDialog projectPath={projectPath} canRun={codexReady && !!profileId} onCreate={create} onClose={() => setCreating(false)} />}
+    {drawer && selected && <TaskDrawer error={error} task={selected} busy={busy} path={path}
+      tab={drawer.tab} onTab={tab => setDrawer({ ...drawer, tab })}
+      onSave={save} onCancelTask={cancelTask} onReview={() => { setDrawer(null); void openReview(selected); }} onClose={() => setDrawer(null)}
+      onCancelExecution={executionId => perform(async () => { await api<Schema["ExecutionDto"]>(`${path}/${selected.id}/executions/${executionId}/cancel`, { method: "POST" }); })} />}
+    {review && <ReviewDialog scope={{ organizationId: project.organizationId, projectId: project.id, taskId: review.taskId, executionId: review.executionId }}
+      onClose={() => setReview(null)} onChanged={() => void refresh().catch(failure => setError(errorMessage(failure)))} />}
   </>;
 }
 
-function TaskCard({ task, busy, selected, assignee, draggable, isDragging, onDragStart, onDragEnd, onOpen, onReview, onRun }: {
-  task: TaskItem; busy: boolean; selected: boolean; assignee?: string; draggable: boolean; isDragging: boolean;
-  onDragStart: () => void; onDragEnd: () => void; onOpen: () => void; onReview: () => void; onRun: () => void;
+function TaskCard({ task, busy, canRun, onOpen, onProgress, onRun, onReview }: {
+  task: TaskItem; busy: boolean; canRun: boolean; onOpen: () => void; onProgress: () => void; onRun: () => void; onReview: () => void;
 }) {
-  const criteria = task.acceptanceCriteria.length;
-  const dependencies = task.dependencyIds.length;
-  return <article className={`task-card${isDragging ? " dragging" : ""}`} data-stage={task.stage} data-selected={selected} draggable={draggable}
-    onDragStart={event => { event.dataTransfer.setData("text/plain", task.id); event.dataTransfer.effectAllowed = "move"; onDragStart(); }} onDragEnd={onDragEnd}>
+  const folder = folderName(task.folderPath);
+  const failed = task.stage === "failed";
+  return <article className="task-card" data-stage={task.stage}>
     <button className="task-card-main" onClick={onOpen} aria-label={`Abrir tarefa ${task.title}`}>
       <span className="task-title">{task.title}</span>
       {task.description && <span className="task-desc">{task.description}</span>}
     </button>
     <div className="task-card-meta">
-      <span className="chip" title={`${criteria} critério(s) de aceitação`}><Icon name="list" size="sm" />{criteria}</span>
-      {dependencies > 0 && <span className="chip" title={`${dependencies} dependência(s)`}><Icon name="link" size="sm" />{dependencies}</span>}
-      {assignee && <Avatar name={assignee} size={22} />}
+      {folder && <span className="chip" title={task.folderPath ?? undefined}><Icon name="folder" size="sm" />{folder}</span>}
+      {(failed || task.stage === "blocked" || task.stage === "awaitingMerge") && <span className={`badge ${failed ? "danger" : "warning"}`}>{stageLabels[task.stage]}</span>}
     </div>
-    {task.stage === "ready" && <div className="task-card-actions"><button className="sm" onClick={onRun} disabled={busy}><Icon name="play" size="sm" />Executar</button></div>}
-    {["review", "awaitingMerge"].includes(task.stage) && <div className="task-card-actions"><button className="primary sm" onClick={onReview} disabled={busy}><Icon name="eye" size="sm" />Revisar alterações</button></div>}
+    {laneOf(task.stage) === "created" && <div className="task-card-actions"><button className="primary sm" onClick={onRun} disabled={busy || !canRun}
+      title={canRun ? undefined : "Ative o Codex da máquina (veja Primeiros passos)"}><Icon name="play" size="sm" />{failed ? "Tentar de novo" : "Executar"}</button></div>}
+    {task.stage === "execution" && <div className="task-card-actions"><button className="sm" onClick={onProgress}><Icon name="clock" size="sm" />Ver progresso</button></div>}
+    {laneOf(task.stage) === "fix" && <div className="task-card-actions"><button className="primary sm" onClick={onReview} disabled={busy}><Icon name="eye" size="sm" />Revisar e concluir</button></div>}
   </article>;
 }

@@ -1,18 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { signUp } from "./session";
 
 test("memória candidata, validação, arquivamento e restauração", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Criar uma conta" }).click();
-  await page.getByLabel("E-mail", { exact: true }).fill(`memory-${crypto.randomUUID()}@example.test`);
-  await page.getByLabel("Senha", { exact: true }).fill("Local-Test-Password42!");
-  await page.getByRole("button", { name: "Cadastrar", exact: true }).click();
-  await page.getByRole("button", { name: "Adicionar equipe", exact: true }).click();
-  await page.getByLabel("Nova equipe", { exact: true }).fill("Equipe memória");
-  await page.getByRole("button", { name: "Criar equipe", exact: true }).click();
-  await page.getByRole("button", { name: "Adicionar projeto", exact: true }).click();
-  await page.getByLabel("Novo projeto", { exact: true }).fill("Projeto memória");
-  await page.getByRole("button", { name: "Criar projeto", exact: true }).click();
-  await page.getByRole("navigation", { name: "Navegação do projeto" }).getByRole("button", { name: "Memória", exact: true }).click();
+  await signUp(page, "memory");
+  await page.getByRole("navigation", { name: "Navegação principal" }).getByRole("button", { name: "Memória", exact: true }).click();
   const form = page.getByRole("form", { name: "Editar memória" });
   await form.getByLabel("Chave da fonte").fill("docs/rounding.md");
   await form.getByLabel("Título da memória").fill("Arredondamento financeiro");
@@ -31,14 +22,6 @@ test("memória candidata, validação, arquivamento e restauração", async ({ p
   await page.getByRole("button", { name: /^Arredondamento financeiro/ }).click();
   await expect(form.getByLabel("Status da memória")).toHaveValue("candidate");
   await expect(form.getByLabel("Conteúdo da memória")).toHaveValue("Valores monetários usam duas casas decimais.");
-  await page.getByRole("navigation", { name: "Navegação do projeto" }).getByRole("button", { name: "Demandas", exact: true }).click();
-  const planning = page.getByRole("form", { name: "Analisar demanda", exact: true });
-  await planning.getByLabel("Problema ou demanda").fill("Corrigir o cálculo de arredondamento.");
-  await planning.getByRole("button", { name: "Analisar e propor tarefa" }).click();
-  const proposal = page.getByRole("region", { name: "Proposta da análise" });
-  await expect(proposal).toContainText("Informações necessárias");
-  await expect(proposal).toContainText("Qual é o comportamento esperado");
-  await expect(page.getByRole("button", { name: "Criar tarefa revisada na entrada" })).toHaveCount(0);
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

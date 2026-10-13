@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PublicationPanel } from "./PublicationPanel";
 import { Alert } from "./ui";
 import { api, errorMessage, type Schema } from "./api";
 
@@ -12,7 +11,7 @@ const stateLabels: Record<Schema["ExecutionState"], string> = {
 };
 const toolLabels: Record<string, string> = { read: "Leitura", write: "Escrita", test: "Testes" };
 
-export function ExecutionProgress({ path, showPublication = true }: { path: string; showPublication?: boolean }) {
+export function ExecutionProgress({ path }: { path: string }) {
   const [progress, setProgress] = useState<Progress | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [connection, setConnection] = useState("Conectando…");
@@ -73,7 +72,6 @@ export function ExecutionProgress({ path, showPublication = true }: { path: stri
       <span className="when"><time dateTime={event.timestamp}>{new Date(event.timestamp).toLocaleTimeString()}</time> · tentativa {event.attempt}
         {event.hash && <> · hash {event.hash.slice(0, 12)}</>} · <a href={`/api/v1${path}/reports/${event.eventId}`}>Relatório</a></span>
     </li>)}</ol>
-    {showPublication && progress?.execution.state === "succeeded" && <PublicationPanel path={path} />}
     <p className="hint">Checkpoints e métricas persistidos. Conteúdo de arquivos e saídas livres das ferramentas não são exibidos.</p>
   </section>;
 }

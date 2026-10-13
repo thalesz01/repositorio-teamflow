@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { ExecutionProgress } from "./ExecutionProgress";
-import { PublicationPanel } from "./PublicationPanel";
 import { Alert, EmptyState, Icon } from "./ui";
 import { errorMessage, listAll, type Schema } from "./api";
 
@@ -12,7 +11,7 @@ export const executionStates: Record<ExecutionState, { label: string; tone: stri
   failed: { label: "Falhou", tone: "danger" }, cancelled: { label: "Cancelada", tone: "" },
 };
 
-export function ExecutionHistory({ path, busy, stage, onCancel, onCount }: { path: string; busy: boolean; stage?: Schema["TaskStage"]; onCancel: (id: string) => Promise<void>; onCount?: (count: number) => void }) {
+export function ExecutionHistory({ path, busy, stage, onCancel, onCount, onReview }: { path: string; busy: boolean; stage?: Schema["TaskStage"]; onCancel: (id: string) => Promise<void>; onCount?: (count: number) => void; onReview?: () => void }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [executions, setExecutions] = useState<Schema["ExecutionDto"][]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -38,11 +37,11 @@ export function ExecutionHistory({ path, busy, stage, onCancel, onCount }: { pat
   return <div className="stack">
     {error && <Alert>{error}</Alert>}
     {review && <section className="review-callout" aria-label="Revisão da execução mais recente">
-      <header><Icon name="check" /><div><h3>{stage === "done" ? "Revisão concluída" : "Pronta para revisão"}</h3>
-        <p className="hint">{stage === "done" ? "As alterações foram aprovadas e o merge foi confirmado." : "As alterações estão na branch da execução. A pasta original recebe o código após aprovação e merge."}</p></div></header>
-      <PublicationPanel key={review.id} path={`${path}/${review.id}`} />
+      <header><Icon name="check" /><div><h3>{stage === "done" ? "Concluída" : "Pronta para revisão"}</h3>
+        <p className="hint">{stage === "done" ? "As alterações foram aplicadas na pasta do projeto." : "Revise o que mudou, comente o que precisa de ajuste e conclua. A pasta só recebe o código ao concluir."}</p></div>
+        {onReview && ["review", "awaitingMerge"].includes(stage ?? "") && <button className="primary sm" onClick={onReview}><Icon name="eye" size="sm" />Revisar e concluir</button>}</header>
     </section>}
-    {loaded && !executions.length && <div className="card"><EmptyState icon="play" title="Nenhuma execução registrada">Quando a tarefa estiver pronta, use <strong>Executar</strong> no quadro ou mova-a para Em execução.</EmptyState></div>}
+    {loaded && !executions.length && <div className="card"><EmptyState icon="play" title="Nenhuma execução registrada">Use <strong>Executar</strong> no cartão da tarefa para começar.</EmptyState></div>}
     <div className="run-list">
       {executions.map(item => {
         const state = executionStates[item.state];
@@ -57,8 +56,8 @@ export function ExecutionHistory({ path, busy, stage, onCancel, onCount }: { pat
               <button className="sm" onClick={() => setExpanded(current => current === item.id ? null : item.id)} aria-expanded={expanded === item.id}>Ver progresso</button>
             </div>
           </div>
-          {item.state === "queued" && item.attempt === 0 && !item.cancellationRequested && <div style={{ marginTop: 12 }}><Alert tone="info">Esta execução só começa quando houver um <strong>runner ativo para este projeto</strong>. Cada projeto precisa do seu próprio runner; veja <code>docs/runner-local.md</code>.</Alert></div>}
-          {expanded === item.id && <ExecutionProgress key={item.id} path={`${path}/${item.id}`} showPublication={item.id !== review?.id} />}
+          {item.state === "queued" && item.attempt === 0 && !item.cancellationRequested && <div style={{ marginTop: 12 }}><Alert tone="info">Esta execução só começa quando houver um <strong>runner ativo</strong>. Rode <code>./scripts/Start-TeamFlow.ps1</code>; veja <code>docs/runner-local.md</code>.</Alert></div>}
+          {expanded === item.id && <ExecutionProgress key={item.id} path={`${path}/${item.id}`} />}
         </div>;
       })}
     </div>
