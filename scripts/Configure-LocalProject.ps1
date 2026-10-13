@@ -18,7 +18,7 @@ if (-not $config.Integrations.ContainsKey($orgKey)) { $config.Integrations[$orgK
 if (-not $config.Integrations[$orgKey].ContainsKey($projectKey)) { $config.Integrations[$orgKey][$projectKey] = @{} }
 $config.Integrations[$orgKey][$projectKey].Codex = @{ Enabled = $true }
 $config.Integrations[$orgKey][$projectKey].Local = @{ RepositoryPath = $repository }
-$config.Memory = @{ EnableIndexWorker = $true; EnableEmbeddingRequests = $false }
+$config.Memory = @{ EnableIndexWorker = $true }
 $config.Local = @{ EnablePublication = $true; EnableReview = $true }
 $config.Codex = @{ Executable = $codex.Source; EnableRequests = $true }
 $config | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $target -Encoding utf8

@@ -1,6 +1,6 @@
 # 0004 — Integrações iniciais Git e IA
 
-Status: Aceito em 2026-10-11 pelo responsável, nesta conversa ("pode continuar").
+Status: Aceito em 2026-10-11 pelo responsável, nesta conversa ("pode continuar"). Substituído pela ADR 0005 para o fluxo principal e removido pela ADR 0008 em 2026-10-13: GitHub App e OpenAI API não existem mais no código.
 
 ## Recomendação inicial
 

@@ -1,6 +1,6 @@
 # Execução local com Codex CLI e Git
 
-Decisão aceita em 2026-10-12 por solicitação do responsável. O fluxo principal passa a usar `codex.exe` instalado na máquina e repositórios Git locais. GitHub/OpenAI API permanecem compatíveis com dados anteriores, sem serem necessários para novas conexões locais.
+Decisão aceita em 2026-10-12 por solicitação do responsável. O fluxo usa `codex.exe` instalado na máquina e repositórios Git locais. Em 2026-10-13 a ADR 0008 removeu GitHub App, OpenAI API e webhooks: este é o único fluxo suportado e não depende de repositório Git remoto.
 
 ## Configurar um projeto
 
@@ -31,13 +31,13 @@ O CLI pode usar autenticação ChatGPT e modelos remotos. Executável local não
 
 Não inventar preço zero: custo e tokens do CLI são desconhecidos/null. `ModelTurn.BillingMode=cli` distingue resposta confirmada sem tarifação de chamada com resultado incerto. Respostas confirmadas podem ser recuperadas; falhas/pending não podem ser repetidas automaticamente como se nada tivesse ocorrido. Reserva tarifada é zero porque não há preço configurado para esse transporte, não porque o serviço seja gratuito. Limites de tempo, etapas, tentativas e tamanho continuam obrigatórios. Um orçamento USD no contrato legado não controla a assinatura ou limites da conta do CLI.
 
-Codex CLI não fornece embeddings nessa integração. O perfil cria índices textuais locais (`model=text-only`, `dimensions=0`, vetores vazios) sem chamar modelo. Fontes validadas, chunks/hashes e versões seguem as mesmas regras; recuperação semântica exclui índices textuais. Consultas semânticas por esse perfil são rejeitadas. Não habilitar OpenAI embeddings como dependência silenciosa.
+Codex CLI não fornece embeddings nessa integração. O perfil cria índices textuais locais (`model=text-only`, `dimensions=0`, vetores vazios) sem chamar modelo. Fontes validadas, chunks/hashes e versões seguem as mesmas regras; recuperação semântica exclui índices textuais. A busca é sempre textual; não há provedor de embeddings.
 
 ## Publicação, aprovação e merge
 
-`Local:EnablePublication` e `Local:EnableReview` habilitam o fluxo local; flags GitHub não são necessárias. Após resultado e testes confirmados, o backend monta árvore/commit determinísticos e a ref `teamflow/<executionId>` no Git local. Usa índice temporário e plumbing Git; não altera índice original, checkout ou arquivos de trabalho. Repetição confirma o mesmo commit/branch; base alterada ou branch divergente interrompe a publicação.
+`Local:EnablePublication` e `Local:EnableReview` habilitam o fluxo local; não existem flags GitHub. Após resultado e testes confirmados, o backend monta árvore/commit determinísticos e a ref `teamflow/<executionId>` no Git local. Usa índice temporário e plumbing Git; não altera índice original, checkout ou arquivos de trabalho. Repetição confirma o mesmo commit/branch; base alterada ou branch divergente interrompe a publicação.
 
-O painel exibe um diff autorizado do projeto. Para compatibilidade interna, os contratos legados ainda usam `pullRequest`, `number=1` e `ciPassed`. No transporte local representam solicitação local por executionId e testes confirmados do runner; não são PR/CI do GitHub. Nunca apresentar isso como uma verificação externa.
+O painel exibe um diff autorizado do projeto. Por compatibilidade, os contratos ainda usam `pullRequest`, `number=1` e `ciPassed`. No transporte local representam solicitação local por executionId e testes confirmados do runner; não são PR/CI do GitHub. Nunca apresentar isso como uma verificação externa.
 
 Outra pessoa da equipe aprova o head exato. Feedback cria nova execução com histórico portátil, repetição de testes e nova aprovação. O merge é feito por pessoa autorizada no terminal (`git merge --ff-only teamflow/<executionId>` na branch base), depois da revisão. Consulte novamente no painel: Done e memória candidata só aparecem após base/head/parent e aprovação serem confirmados. Apenas fast-forward exato é aceito atualmente; squash/rebase/outros merges exigem revalidação. Aprovar não faz merge automaticamente.
 

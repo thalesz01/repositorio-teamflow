@@ -8,4 +8,4 @@ Cada alteração gera uma versão imutável; atualizar com versão antiga retorn
 
 DELETE arquiva de forma reversível, preservando o histórico. Fontes arquivadas ficam ocultas também na leitura de versões e não podem ser reimportadas implicitamente; restauração explícita gera uma nova versão candidata. Indexação/busca devem conferir escopo, versão atual, status validado e ausência de arquivamento antes de enviar qualquer derivado ao modelo. Revogação de associação bloqueia o acesso pelas mesmas verificações de projeto. Nenhuma exclusão física automática foi aplicada; a proposta de retenção permanece pendente de autorização específica.
 
-Validação: integração PostgreSQL cobre versionamento, conflito, tenant, arquivamento, restauração e caminhos/conteúdo excluídos; revisão cobre criação candidata vinculada ao merge. E2E de memória usa API local real, sem provedor de IA ou GitHub real.
+Validação: integração PostgreSQL cobre versionamento, conflito, tenant, arquivamento, restauração e caminhos/conteúdo excluídos; revisão cobre criação candidata vinculada ao merge. E2E de memória usa API local real, sem provedor de IA real.

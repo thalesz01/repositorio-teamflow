@@ -41,7 +41,7 @@ Referência: commit/PR quando houver, ou entrega local sem commit
 | Memória | T21–T24 | Conhecimento com fontes, recuperação e portabilidade |
 | Piloto | T25 | Fluxo completo validado com limites explícitos |
 
-Próximo passo: **T25**, piloto real com Codex CLI e Git local. T01–T24 e T26–T36 estão concluídas. Esta ordem não autoriza trabalho paralelo automaticamente.
+Próximo passo: nenhum item obrigatório pendente. T01–T37 estão concluídas. Esta ordem não autoriza trabalho paralelo automaticamente.
 
 ## Tarefas
 
@@ -445,9 +445,9 @@ Próximo passo: **T25**, piloto real com Codex CLI e Git local. T01–T24 e T26�
 
   - Conclusão 2026-10-11: 63 testes API e 28 runner aprovados; perfil substituído com recibos/estado portátil, hashes/base divergentes, teste histórico insuficiente, fontes invalidadas antes do claim. Contratos portáteis estendidos por campos opcionais, migração PortableAgentTransfer em banco existente/vazio, formatação e TypeScript/lint/build aprovados. Reutilização de fonte em análise/tarefa/agendamento verificada; T25 demonstra também o uso no modelo durante nova execução. Nenhum segundo fornecedor foi escolhido nem chamada paga executada.
 
-### [ ] T25 — Validar MVP de ponta a ponta e preparar piloto
+### [x] T25 — Validar MVP de ponta a ponta e preparar piloto
 
-- Status: Em andamento
+- Status: Concluída
 - Dependências: T18, T20, T24
 - Componente: tests; documentação; configuração
 - Escopo: Validar jornada completa em fixtures e smoke test real autorizado; organizar checks independentes e documentar operação/limites.
@@ -466,6 +466,8 @@ Próximo passo: **T25**, piloto real com Codex CLI e Git local. T01–T24 e T26�
   - Verificação 2026-10-12: jornada MvpJourneyTests e ProductionGateTests reexecutadas, 2 testes aprovados. Pré-verificação validada contra IDs vazios, budgets acima do total, origem insegura, campo de credencial indevido e ausência de sessão; relatório não declara smoke externo executado. git diff --check sem erros de whitespace.
   - CI 2026-10-13: workflows por aplicação em .github/workflows (api, runner, web), descritos em docs/development.md#ci. Reproduzidos num container Linux local: build, format e EF da API/runner sem pendências e 70 testes da API aprovados com o filtro do CI; os testes dependentes de Docker e a suíte do runner não rodaram no Linux, e nenhum workflow executou no GitHub (sem remoto). Três testes de Codex nativo ficam fora do CI e seguem locais.
   - Pendente obrigatório do escopo atual (ADR 0005, 2026-10-12): smoke com Codex CLI real e Git local. Login, caminho autorizado e checkout da pasta indicada foram conferidos; ainda requer código registrado no Git, política/imagem/comando de testes, revisão independente e evidência de uma tarefa real até merge/reutilização. GitHub App/chave API/orçamento de fornecedor não são requisitos desse modo. Não marcar concluída somente por fixtures ou login status.
+  - Smoke real concluído em 2026-10-13 (Codex CLI 0.162.0-alpha.2 com login ChatGPT, Git local sem remoto, Docker real), num projeto novo e isolado em `C:\Users\thale\teamflow-smoke\project` (add.sh com defeito, test.sh, 1 commit). Nenhum outro repositório foi lido ou alterado, em especial "Aplicacao de Licitacoes". Banco `teamflow_smoke` (todas as migrações em banco vazio), API na porta 15090, runner independente com sandbox sem rede. Fluxo: demanda → análise (Codex real, respondeu `needs_information` por não haver fontes; tarefa criada manualmente com 2 critérios) → execução 1 tentativa, ~25 s (Codex leu add.sh, escreveu a correção, teste `sh test.sh` aprovado no sandbox) → publicação local (head `6d490d5d3e50`; a primeira tentativa foi interrompida por mim com a API em curso e o lease de 3 min foi recuperado na reinicialização: tentativa 2, mesma ref) → diff local (`-echo $(($1 - $2))` / `+echo $(($1 + $2))`; árvore de trabalho e `main` intactas até o merge) → aprovação do próprio autor recusada (409 `independent_review_required`) → aprovação do revisor (`awaiting_merge`, tarefa em AwaitingMerge) → `git merge --ff-only teamflow/<id>` humano → consulta: `merged`, tarefa `done`, `sh test.sh` no projeto = ok → memória candidata `resolution/<id>` validada e indexada (`text-only`) → busca a cita → nova análise (Codex real) citou essa fonte no plano. Custo e tokens permanecem desconhecidos (`null`).
+  - Limites desta evidência: projeto de brinquedo, uma tarefa; não mede qualidade do modelo nem substitui piloto em aplicação real; a análise real devolveu perguntas, não uma proposta pronta; busca textual usa AND de termos, então demandas longas podem não achar fontes (ver T37). A publicação foi disparada duas vezes por mim (worker + chamada manual): o 409 `publication_in_progress` é o comportamento esperado. Evidências locais: `C:\Users\thale\teamflow-smoke\{smoke.log,evidence.json,logs}`.
 ## Fora do primeiro MVP
 
 Não iniciar como requisito implícito: múltiplos serviços Git, catálogo amplo de provedores, agentes concorrentes na mesma tarefa, workflows editáveis pelo usuário, marketplace, GraphRAG, Kubernetes, cobrança e relatórios avançados. Esses itens exigem demanda e tarefas próprias.
@@ -570,3 +572,15 @@ Por decisão explícita do responsável, a T25 passa a exigir smoke de Codex CLI
 - Escopo: revisão dedicada, lista e filtro de arquivos, contagem real de linhas, numeração antes/depois, diffs acessíveis/responsivos e ações existentes de revisão.
 - Critérios: autorização existente preservada; renderização segura; formatos de Git cobertos; testes de navegação/mobile/erros e preview atualizado.
 - Conclusão 2026-10-12: rota dedicada /reviews com quatro IDs de escopo, consumo do diff local autenticado existente, navegação/filtro por arquivo, estatísticas reais, números antes/depois, modo somente alterações e ações de revisão existentes. Parser cobre múltiplos hunks, arquivo novo/removido, rename, Unicode Git octal, binários e ausência de newline. React escapa código; nenhuma autorização/merge foi alterada. Tipos/lint/build aprovados; 3 testes de diff aprovados após ajustar asserções opcionais/route announcer; 2 testes de Kanban passaram. Screenshots desktop/mobile revisados, largura 375 px sem overflow de página. Preview atualizado na porta 3000; link Abrir diff local agora abre a página visual.
+
+
+### [x] T37 — Remover GitHub App, OpenAI API e webhooks
+
+- Status: Concluída
+- Responsável: Codex; início 2026-10-13
+- Dependências: T25 (decisão do responsável em 2026-10-13: remover; ADR 0008 aceita)
+- Escopo: remover o caminho GitHub/OpenAI do código, contratos, dados, testes e documentação; manter somente Codex CLI e Git local; nenhuma dependência de repositório Git remoto.
+- Critérios: sem GitHub/OpenAI no código ativo; migração com atualização verificada; contratos e web regenerados; checks aprovados; documentação coerente.
+- Conclusão 2026-10-13: removidos `GitHubProvider/Publisher/Review/Webhook`, `WebhookProcessor`, `OpenAiTextModel/EmbeddingModel`, `IntegrationSecrets`, endpoints de conexão GitHub, perfil com chave e webhook; `LocalGit` implementa `IGitPublisher`/`IGitReview`; `CodexTextModel` é o único `ITextModel`; `GitCheckout` aceita só a pasta local; busca e indexação só textuais (`semantic`/vetor saíram dos contratos). Migração `RemoveGitHubOpenAi` revoga conexões/perfis não locais e remove `GitHubDeliveries` e colunas de segredo/identificador; atualização testada num banco temporário com linhas legadas (github/openai revogados, local/codex intactos, colunas e tabela removidas). OpenAPI e tipos do web regenerados; UI sem texto de PR/CI/GitHub. Testes de provedores externos removidos; suítes reescritas com Git local e doubles de IA.
+- Validação: `Test-App.ps1` api (64 testes, build 0 avisos, format, EF sem pendências), runner (31 testes, format), web (typecheck, lint, build); Playwright 10/10 numa cópia isolada do web com o Chrome instalado (o Chromium do Playwright 1.64 não está baixado nesta máquina e não foi baixado). Smoke real na T25.
+- Limitações: CI no GitHub Actions não foi executado (sem remoto); os 3 testes de Codex nativo seguem fora do CI Linux. A busca textual usa `plainto_tsquery` (AND de termos) e perdeu o apoio vetorial: avaliar OR/`websearch_to_tsquery` com métrica antes de mudar. Colunas históricas (`Provider`, `RepositoryId`, preços, `BillingMode`, `Embedding`) foram mantidas de propósito (ADR 0008). Bancos de desenvolvimento existentes precisam de `dotnet ef database update` antes de subir a API nova.

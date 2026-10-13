@@ -1,30 +1,29 @@
-# 0008 — Destino do caminho legado GitHub/OpenAI
+# 0008 — Remoção do caminho GitHub/OpenAI
 
-- Status: **Proposta** em 2026-10-13. Depende de aceite do responsável; nenhuma mudança de código acompanha esta proposta.
-- Contexto: a ADR 0005 tornou Codex CLI e Git local o fluxo principal e manteve GitHub App e OpenAI API como integrações anteriores compatíveis. A análise do projeto levantou se esse caminho deveria sair do registro padrão da API.
+- Status: **Aceita** em 2026-10-13 pelo responsável ("remover"), escolhendo a opção 2 da proposta de mesma data. Substitui a manutenção do legado prevista nas ADRs 0004 e 0005.
+- Contexto: a ADR 0005 tornou Codex CLI e Git local o fluxo principal e manteve GitHub App e OpenAI API como integrações compatíveis. Manter dois caminhos aumentava código, testes e superfície (um endpoint anônimo de webhook, segredos persistidos) sem uso no piloto, e o responsável quer testes que não dependam de nenhum repositório Git remoto.
 
-## Situação verificada
+## Decisão
 
-- `Program.cs` registra `OpenAiTextModel`, `OpenAiEmbeddingModel`, `GitHubProvider`, `GitHubPublisher`, `GitHubReview`, o worker de webhooks e `POST /webhooks/github`, junto com os equivalentes locais.
-- O uso em tempo de execução já é opt-in por configuração, com padrão desligado: `OpenAI:EnableRequests`, `Memory:EnableEmbeddingRequests`, `GitHub:EnablePublication`, `GitHub:EnableReview` e, no webhook, `GitHub:WebhookSecret`. Sem o segredo, `/webhooks/github` responde 503 `webhook_not_configured` antes de qualquer efeito.
-- `ITextModel`, `IGitPublisher` e `IGitReview` são as fronteiras de provedor de IA e de Git que o AGENTS.md pede. `ProfileAccess`, `RepositoryAccess`, `PublicationAccess` e `ReviewAccess` escolhem entre local e remoto por dado persistido (perfil, `LocalPath`), não por registro no contêiner. Registro condicional exigiria resolver o provedor por requisição e acrescentaria um segundo mecanismo de seleção.
-- Tamanho do legado: cerca de 680 linhas em `Features/Integrations` (GitHub*, OpenAi*, Webhook*), migrações e colunas já aplicadas, e testes (`ProviderTests`, `PublicationProviderTests`, `ReviewProviderTests`, `WebhookTests`, `EmbeddingProviderTests`) que usam doubles.
+Remover GitHub App, OpenAI API (texto e embeddings) e webhooks. O produto passa a ter um único transporte de IA (Codex CLI) e um único de Git (pasta local).
 
-## Opções
+### O que saiu
 
-1. **Manter como está, documentar o estado (recomendada).** Sem código novo. O custo atual é de leitura e manutenção, não de exposição: o caminho é inerte sem configuração explícita. Preserva dados e execuções anteriores e a opção de voltar ao GitHub no piloto.
-2. **Remover.** Apaga o código, as colunas e os testes do legado por nova migração e quebra a compatibilidade das ADRs 0004 e 0005. Só se justifica se GitHub/OpenAI forem descartados como direção do produto. Exige plano para registros existentes, pois não se altera migração aplicada.
-3. **Registro condicional por configuração.** Rejeitada: não reduz exposição que já esteja ativa e duplica a seleção de provedor.
+- Código: `GitHubProvider`, `GitHubPublisher`, `GitHubReview`, `GitHubWebhook`, `WebhookProcessor` (inbox, worker, assinatura), `OpenAiTextModel`, `OpenAiEmbeddingModel`, `IntegrationSecrets` e os endpoints `POST /webhooks/github`, `POST .../repository/` (conexão GitHub) e `POST .../profiles/` (perfil com chave de API).
+- Configuração: `GitHub:*`, `OpenAI:*`, `Memory:EnableEmbeddingRequests`, `Memory:EmbeddingUsdPerMillionTokens` e as chaves por projeto de GitHub/OpenAI.
+- Dados (migração `RemoveGitHubOpenAi`): conexões e perfis não locais são **revogados** antes de a tabela `GitHubDeliveries` e as colunas `AppId`, `InstallationId`, `Owner`, `Repository`, `ProtectedPrivateKey` e `ProtectedApiKey` serem apagadas. Segredos persistidos deixam de existir. Execuções, tarefas e memória históricas são preservadas, inclusive seus snapshots.
+- Checkout do runner: o caminho HTTPS com token deixou de existir; `GitCheckout` só aceita a pasta local autorizada.
+- Busca: sem provedor de embeddings, a busca é só textual e o parâmetro `semantic`/vetor foi removido dos contratos.
 
-## Decisão proposta
+### O que permanece
 
-Adotar a opção 1 e registrar que:
-
-- GitHub App, OpenAI API e webhooks continuam suportados somente por configuração explícita de servidor; o fluxo local não os requer.
-- Não há mudança no `Program.cs`, nas migrações ou nas interfaces.
-- Reavaliar a remoção (opção 2) quando o piloto local (T25) terminar e se decidir que GitHub/OpenAI não fazem parte da direção do produto.
+- `ITextModel`, `IGitPublisher` e `IGitReview` continuam como fronteiras (AGENTS.md §4), agora com uma implementação cada (`CodexTextModel`, `LocalGit`) e doubles nos testes.
+- Colunas de contrato que mantêm nomes históricos: `GitConnections.Provider`/`RepositoryId`, `pullRequest`/`number`/`ciPassed` na API, preços por milhão de tokens e `BillingMode`. O turno histórico `BillingMode=api` sem custo conhecido continua bloqueando nova tentativa.
+- Coluna `MemoryChunks.Embedding` e extensão pgvector, vazias, à espera de um provedor futuro. Um provedor novo exigirá ADR.
 
 ## Consequências
 
-- O legado continua sendo mantido e testado com doubles; chamadas reais seguem opt-in e não são exercidas no CI padrão.
-- A superfície anônima permanece `POST /webhooks/github`, que valida assinatura HMAC, tamanho e entrega antes de aceitar. Antes de qualquer implantação, o endpoint deve ser exposto por proxy apenas se o webhook for utilizado.
+- Atualizar o banco exige aplicar a migração (`dotnet ef database update`) antes de subir a API nova. A migração é irreversível quanto a segredos e identificadores GitHub/OpenAI apagados; os dados de revogação e o histórico são mantidos. O caminho de atualização foi verificado em banco temporário com linhas legadas (conexão e perfil revogados, locais intactos).
+- Os testes de provedores externos (OpenAI, GitHub, webhook, embeddings) foram removidos. A jornada integrada continua cobrindo análise, execução, publicação, feedback, aprovação independente, merge fast-forward e reuso de memória, com Git real e doubles de IA.
+- Contratos: OpenAPI e tipos do web foram regenerados; `semantic`, vetor de busca, `GitInput`, `ProfileInput` e `InstallationToken` (agora `CheckoutGrant`) saíram. Os consumidores no repositório foram atualizados.
+- Nenhuma validação de CI externo é possível por esse caminho: a revisão é a verificação local de head, base e fast-forward mais a aprovação humana independente.
