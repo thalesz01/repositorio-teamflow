@@ -14,7 +14,6 @@ const messages: Record<string, string> = {
   codex_not_configured: "O administrador precisa configurar o executável do Codex nesta máquina.",
   codex_failed: "O Codex não terminou a execução. Confira o login e a instalação local.",
   embedding_not_supported: "Use a busca textual de memória com o perfil Codex CLI.",
-  local_review_pending: "A revisão e o merge locais ainda precisam ser implementados.",
   provider_disabled: "O operador precisa configurar e habilitar as chamadas externas neste servidor.",
   budget_exceeded: "O orçamento é menor que a reserva estimada. Revise os limites configurados.",
   context_limit: "O contexto ultrapassa o limite do perfil. Reduza a demanda ou ajuste o perfil.",

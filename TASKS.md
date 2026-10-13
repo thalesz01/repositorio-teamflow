@@ -41,7 +41,7 @@ Referência: commit/PR quando houver, ou entrega local sem commit
 | Memória | T21–T24 | Conhecimento com fontes, recuperação e portabilidade |
 | Piloto | T25 | Fluxo completo validado com limites explícitos |
 
-Próximo passo: **T11**, sandbox e segredos. T01–T10 estão concluídas; runner, integrações e harness permanecem nas tarefas seguintes. Esta ordem não autoriza trabalho paralelo automaticamente.
+Próximo passo: **T25**, piloto real com Codex CLI e Git local. T01–T24 e T26–T36 estão concluídas. Esta ordem não autoriza trabalho paralelo automaticamente.
 
 ## Tarefas
 

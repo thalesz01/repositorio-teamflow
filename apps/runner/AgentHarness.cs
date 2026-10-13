@@ -59,7 +59,7 @@ public sealed class AgentHarness(IAgentModel model, IAgentCheckpoint checkpoints
 
 public sealed class WorkspaceTools
 {
-    private const int FileLimit = 16384;
+    internal const int FileLimit = 16384;
     private readonly ExecutionWorkspace _workspace;
     private readonly ISandbox _sandbox;
     private readonly HashSet<string> _readable;

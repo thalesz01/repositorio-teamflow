@@ -42,7 +42,7 @@ O motor mínimo e as pendências de integração estão documentados em [harness
 
 ## Executar uma tarefa (T16)
 
-Copiar controller.example.json para configuração ignorada fora do checkout, preencher IDs/worker/root/política e fornecer TEAMFLOW_RUNNER_TOKEN no ambiente. Executar `dotnet run --no-build -- run-once <arquivo>`. Isso consome uma tarefa real do projeto; não usar como check neutro. Perfil e repositório devem estar configurados; chamadas de modelo continuam desativadas no backend até OpenAI:EnableRequests ser habilitado pelo operador. Consulte docs/harness.md para orçamento, limites e imagens de SDK.
+Copiar controller.example.json para configuração ignorada fora do checkout, preencher IDs/worker/root/política (caminhos exatos ou globs, ver docs/runner-local.md) e fornecer TEAMFLOW_RUNNER_TOKEN no ambiente. Executar `dotnet run --no-build -- run-once <arquivo>`. Isso consome uma tarefa real do projeto; não usar como check neutro. Perfil e repositório devem estar configurados; chamadas de modelo continuam desativadas no backend até OpenAI:EnableRequests ser habilitado pelo operador. Consulte docs/harness.md para orçamento, limites e imagens de SDK.
 
 ## Recuperação e operação contínua (T17)
 

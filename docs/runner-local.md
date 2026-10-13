@@ -6,7 +6,8 @@ API, frontend e runner são processos independentes. Ter Codex autenticado não 
 
 1. Compilar `apps/api/TeamFlow.Api.csproj` e `apps/runner/TeamFlow.Runner.csproj`.
 2. Salvar uma pasta local autorizada no projeto. Preparação da base segue ADR 0007.
-3. Preparar JSON com `policy` (arquivos exatos readable/editable e comando test) e `sandbox` (imagem Docker por digest e limites). Usar `apps/runner/controller.example.json` apenas como exemplo, nunca como teste de uma aplicação diferente. Código e comandos do repositório não autorizam ferramentas.
+3. Preparar JSON com `policy` (arquivos readable/editable e comando test) e `sandbox` (imagem Docker por digest e limites). Usar `apps/runner/controller.example.json` apenas como exemplo, nunca como teste de uma aplicação diferente. Código e comandos do repositório não autorizam ferramentas.
+   - Entradas readable/editable aceitam caminhos exatos ou padrões glob com `/` (`*`, `?`, `**`), por exemplo `src/**/*.cs`. Padrões são expandidos uma vez sobre a base do checkout, ignorando entradas ocultas, links, `bin`, `obj`, `node_modules` e arquivos acima de 16 KiB. O resultado continua limitado a 100 caminhos por lista; acima disso a execução falha com `runner_failed`. Criar arquivo novo exige o caminho exato em editable.
 4. Baixar a imagem oficial escolhida antes de executar. Containers de teste usam `--pull never`, rede desabilitada, checkout somente leitura e usuário sem privilégios. Quando a compilação precisa escrever, copiar o código para `/tmp` dentro do container; não modificar o checkout montado.
 5. Na raiz do TeamFlow, executar no PowerShell 7:
 
