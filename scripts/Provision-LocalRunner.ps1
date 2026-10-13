@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)][string]$PolicyPath
 )
 $ErrorActionPreference = 'Stop'
-if (-not $IsWindows) { throw 'Local credentials use Windows DPAPI.' }
+# $IsWindows only exists in PowerShell 7; Windows PowerShell 5.1 is always Windows.
+if ($PSVersionTable.PSEdition -eq 'Core' -and -not $IsWindows) { throw 'Local credentials use Windows DPAPI.' }
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $policy = Get-Content -LiteralPath $PolicyPath -Raw | ConvertFrom-Json
 if (-not $policy.policy.test.executable -or -not $policy.sandbox.image) { throw 'Explicit tool/test policy and sandbox image required.' }
