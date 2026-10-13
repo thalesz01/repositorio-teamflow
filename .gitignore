@@ -38,3 +38,4 @@ work/
 playwright-report/
 test-results/
 apps/api/appsettings.Local.json
+.next-*/

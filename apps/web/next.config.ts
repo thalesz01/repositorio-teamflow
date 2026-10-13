@@ -7,6 +7,10 @@ if (!["http:", "https:"].includes(url.protocol) || url.username || url.password 
 }
 
 const config: NextConfig = {
+  // A separate build directory lets a dev server run next to a production preview without overwriting it.
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
+  // `next dev` would otherwise write an AGENTS.md into the app; agent rules belong to the repository root.
+  agentRules: false,
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${url.origin}/api/:path*` }];
   },

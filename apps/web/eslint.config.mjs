@@ -5,5 +5,5 @@ import reactHooks from "eslint-plugin-react-hooks";
 export default defineConfig([
   ...tseslint.configs.recommended,
   reactHooks.configs.flat.recommended,
-  globalIgnores([".next/**", "next-env.d.ts"]),
+  globalIgnores([".next/**", ".next-*/**", "next-env.d.ts"]),
 ]);
