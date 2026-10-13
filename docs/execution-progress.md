@@ -1,0 +1,9 @@
+# Progresso e relatórios de execução
+
+GET `/api/v1/organizations/{org}/projects/{project}/tasks/{task}/executions/{execution}/progress` retorna estado persistido, métricas e até 100 eventos; `after` usa o NextCursor recebido. Eventos v1 têm eventId, executionId, sequência, timestamp e tentativa. IDs derivam de tentativa/sequência dos checkpoints, não de memória do servidor. A UI deduplica por eventId e consulta o estado após reconexão.
+
+GET `/events` usa SSE com Last-Event-ID, eventos progress/state e reconexão após 60 segundos. Cada leitura verifica novamente a autorização. SSE não substitui a consulta persistida; revogação encerra o stream. Conteúdo recuperado de outra execução não é usado como autorização.
+
+GET `/reports/{eventId}` entrega JSON autorizado com base/hash/status e flags de teste conhecidas. Nenhum prompt, conteúdo de arquivo, argumentos ou stdout/stderr é disponibilizado. Relatório normalmente menor que 4 KiB; paths já respeitam limite 240 caracteres. Valores desconhecidos permanecem null. Custo exibido é estimado pelos preços do perfil, não fatura do provedor.
+
+Armazenamento inicial: checkpoints e recibos de ações no PostgreSQL existente, com limites por execução; relatórios são projeções derivadas sem duplicar blobs. Não há S3 obrigatório neste estágio. A leitura de eventos/relatórios expira após 30 dias; estado e contabilização permanecem consultáveis. Retenção física é indefinida na versão local; exclusão automática permanece desabilitada. Uma eventual exclusão depende de autorização específica: proposta de 30 dias para execuções encerradas/publicadas, preservando custo/histórico e protegendo recuperação/publicação. Nenhum worker de exclusão foi ativado. Backups precisam de retenção própria antes do piloto.

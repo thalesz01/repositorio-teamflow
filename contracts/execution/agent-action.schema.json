@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://teamflow.local/contracts/execution/agent-action-v1",
+  "title": "TeamFlow structured agent action v1",
+  "type": "object",
+  "required": ["tool"],
+  "properties": {
+    "tool": { "enum": ["read", "write", "test", "finish"] },
+    "path": { "type": ["string", "null"], "maxLength": 240 },
+    "content": { "type": ["string", "null"], "maxLength": 16384 },
+    "expectedHash": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": "^(?:missing|[a-f0-9]{64})$" }] }
+  },
+  "allOf": [
+    { "if": { "properties": { "tool": { "enum": ["read", "write"] } } }, "then": { "required": ["path"], "properties": { "path": { "type": "string", "minLength": 1 } } } },
+    { "if": { "properties": { "tool": { "const": "write" } } }, "then": { "required": ["content", "expectedHash"], "properties": { "content": { "type": "string" }, "expectedHash": { "type": "string", "pattern": "^(?:missing|[a-f0-9]{64})$" } } } }
+  ],
+  "$comment": "One action per model turn. Runtime additionally checks trusted path allowlists, workspace boundaries and UTF-8 content <=16 KiB. The test executable and arguments are supplied by controller policy; they are never part of a model action. Schema version is selected by the protocol, not model output."
+}

@@ -1,0 +1,12 @@
+{
+  "origin": "http://localhost:5080/",
+  "organizationId": "00000000-0000-0000-0000-000000000000",
+  "projectId": "00000000-0000-0000-0000-000000000000",
+  "workerId": "00000000-0000-0000-0000-000000000000",
+  "workspaceRoot": "C:\\replace-with-controller-workspaces",
+  "policy": {
+    "readable": ["answer.txt"],
+    "editable": ["answer.txt"],
+    "test": { "executable": "/bin/sh", "arguments": ["-c", "test \"$(cat answer.txt)\" = 42"], "timeout": "00:00:10" }
+  }
+}

@@ -1,0 +1,11 @@
+# Troca de perfil e contexto portátil
+
+A equipe pode selecionar outro perfil ativo no painel de ajustes. Cada execução guarda o perfil escolhido; o modelo é acessado pelo contrato nativo ITextModel e o harness usa ações portáteis, sem estado interno de fornecedor. O MVP possui o adaptador OpenAI aprovado anteriormente; não foi escolhida outra integração comercial. Perfis atuais anunciam textGeneration, e a UI lista somente perfis ativos com essa capacidade.
+
+Feedback cria uma nova execução vinculada ao PR anterior. A transferência exige mesma conexão/version/repositório/base e recibos conhecidos; mudança na base retorna transfer_base_changed. Preserva o commit base, referência ao head publicado, evidências anteriores, pendências e escritas com conteúdo/hashes. Colapsa cada cadeia de escritas por caminho, retendo expectedHash original e conteúdo/hash final. Limite do snapshot: 64 KiB; pacote total agendado até 96 KiB.
+
+O runner aplica as escritas somente nos caminhos autorizados pelo controlador, verifica hash do conteúdo e do checkout e recusa conflitos. Histórico fica em context.history, distinto das evidências atuais. A execução nova começa com evidence vazia e precisa editar/testar antes de concluir. Recuperação preserva memory/history imutáveis; campos opcionais ausentes permanecem omitidos para compatibilidade dos checkpoints v1. Publicação inclui arquivos herdados mais as alterações novas, e exige novos testes/revisão/CI.
+
+TaskInput.analysisId vincula a proposta aceita. O agendamento salva o pacote citado em execution.memoryContext e o entrega ao runner em memory/context.memory. Fontes são verificadas novamente no claim, checkpoint e antes/depois de chamadas ao modelo: arquivo arquivado, versão alterada ou associação revogada interrompe o uso. Uma fonte histórica só vira orientação quando a equipe a valida, indexa e uma análise posterior a seleciona. Não há alegação de melhoria quantitativa.
+
+Fixtures verificam troca entre dois perfis do adaptador escolhido, alterações recuperáveis, base divergente, conflitos de hash/política, teste anterior insuficiente, invalidação de fontes após agendamento e suites independentes. GitHub/modelos nos testes de negócio usam doubles explícitos; testes de ferramentas usam Git/Docker reais.

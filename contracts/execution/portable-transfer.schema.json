@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:teamflow:portable-transfer:v1",
+  "title": "Confirmed parent execution transfer",
+  "type": "object",
+  "required": ["parentExecutionId", "baseCommit", "context", "writes"],
+  "properties": {
+    "parentExecutionId": { "type": "string", "format": "uuid" },
+    "baseCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "publishedHeadCommit": { "type": ["string", "null"] },
+    "context": { "$ref": "https://teamflow.local/contracts/execution/portable-context-v1" },
+    "writes": {
+      "type": "array", "maxItems": 100,
+      "items": {
+        "type": "object", "required": ["step", "path", "content", "expectedHash", "hash"],
+        "properties": {
+          "step": { "type": "integer", "minimum": 1 },
+          "path": { "type": "string", "maxLength": 240 },
+          "content": { "type": "string", "maxLength": 16384 },
+          "expectedHash": { "type": "string", "pattern": "^(missing|[a-f0-9]{64})$" },
+          "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    }
+  },
+  "$comment": "Server creates this snapshot only from known confirmed receipts on the same authorized repository/base. Max serialized 64 KiB; writes are collapsed by path with original base hash. Runner verifies hashes and current controller paths. Historical tests never replace current execution evidence or approval."
+}

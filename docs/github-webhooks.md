@@ -1,0 +1,9 @@
+# Webhooks GitHub — ingresso T20
+
+POST `/webhooks/github` é um endpoint técnico sem sessão humana/CSRF; exige assinatura X-Hub-Signature-256 calculada sobre os bytes originais, conforme [documentação oficial](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries). Assinatura hexadecimal malformada ou divergente retorna 401. Secret GitHub:WebhookSecret pertence à configuração protegida do servidor, nunca ao Git, navegador, runner ou logs; ausência retorna 503. Nenhum webhook real foi criado e localhost não é uma URL de produção alcançável pelo GitHub.
+
+Limite de corpo: 128 KiB mesmo em hosts de teste; o conteúdo é validado como JSON depois da assinatura. X-GitHub-Delivery deve ser UUID. Eventos suportados para inbox: pull_request, pull_request_review, check_run, check_suite, push. Ping e tipos não utilizados assinados retornam accepted sem efeitos de negócio.
+
+Repository/installation IDs do corpo precisam corresponder a conexões ativas. Uma conexão por projeto; se o mesmo repositório pertencer a vários projetos autorizados, fan-out explícito limitado a 100. FK composta preserva organização/projeto da conexão. A unicidade conexão/delivery reconcilia entregas simultâneas; hash/evento diferente no mesmo ID falha. Raw payload fica restrito ao backend, sem endpoint de leitura humana, como dado restrito do processador durável; nunca é tratado como instrução de agente.
+
+Webhooks entram como pending e são processados com leases/tentativas limitadas. O worker consulta o estado atual do GitHub; payload atrasado ou merged=true não autoriza Done. Revisão independente, CI App/head, base/ancestralidade e feedback vinculado estão implementados; consulte docs/pull-request-review.md. Worker é opt-in e desligado em Testing. Retenção física da inbox é indefinida no desenvolvimento; nenhuma exclusão automática foi ativada. O piloto deve definir capacidade/backups/retencão antes de produção.

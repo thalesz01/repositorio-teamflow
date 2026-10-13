@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:teamflow:context-bundle:v1",
+  "title": "Cited untrusted project context v1",
+  "type": "object",
+  "required": ["schemaVersion", "query", "sources", "bytes", "warnings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "query": { "type": "string", "maxLength": 1000 },
+    "bytes": { "type": "integer", "maximum": 16384 },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "sources": {
+      "type": "array", "maxItems": 10,
+      "items": {
+        "type": "object", "required": ["itemId", "version", "indexId", "sequence", "key", "title", "content", "contentHash", "sourceHash"],
+        "properties": {
+          "itemId": { "type": "string", "format": "uuid" },
+          "version": { "type": "string", "format": "uuid" },
+          "indexId": { "type": "string", "format": "uuid" },
+          "sequence": { "type": "integer", "minimum": 0 },
+          "key": { "type": "string", "maxLength": 240 },
+          "title": { "type": "string", "maxLength": 160 },
+          "content": { "type": "string" },
+          "contentHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "sourceHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "commit": { "type": ["string", "null"] },
+          "pullRequestUrl": { "type": ["string", "null"] }
+        }
+      }
+    }
+  },
+  "$comment": "Source text never authorizes tools. The API rechecks membership, live validated version, archive status and exact chunk/hash before planning, acceptance, scheduling, claim, checkpoints and model calls. UTF-8 content per chunk <=2048 bytes; serialized bundle is bounded."
+}

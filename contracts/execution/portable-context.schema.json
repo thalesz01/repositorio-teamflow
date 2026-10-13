@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://teamflow.local/contracts/execution/portable-context-v1",
+  "title": "TeamFlow portable execution context v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "executionId",
+    "objective",
+    "acceptanceCriteria",
+    "baseCommit",
+    "evidence",
+    "pending"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "executionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 1
+    },
+    "acceptanceCriteria": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 30,
+      "items": {
+        "type": "string"
+      }
+    },
+    "baseCommit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "pending": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "required": [
+          "step",
+          "tool",
+          "succeeded",
+          "detail"
+        ],
+        "properties": {
+          "step": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "tool": {
+            "enum": [
+              "read",
+              "write",
+              "test",
+              "rejected"
+            ]
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 240
+          },
+          "succeeded": {
+            "type": "boolean"
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 16384
+          },
+          "hash": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "memory": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:teamflow:context-bundle:v1"
+        }
+      ]
+    },
+    "history": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:teamflow:portable-transfer:v1"
+        }
+      ]
+    }
+  },
+  "$comment": "Server additionally enforces the scheduled objective/criteria/base, contiguous evidence, append-only history, execution maxSteps, UTF-8 detail <=16 KiB and serialized context <=96 KiB. Sequence equals evidence length; initial sequence is zero. Scope and attempt come from the live authenticated lease, not this document."
+}

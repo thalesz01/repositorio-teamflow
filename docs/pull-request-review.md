@@ -1,0 +1,17 @@
+# Revisão, CI, merge e ajustes
+
+GET `/.../executions/{id}/review` retorna a projeção persistida. POST `/review/refresh` consulta o estado atual no GitHub; POST `/review/approve` registra aprovação independente para o commit publicado. Ambas as escritas exigem sessão/CSRF e acesso ao projeto. Outra pessoa da organização deve aprovar; quem iniciou a execução não aprova seu próprio resultado.
+
+Consultas externas dependem de GitHub:EnableReview=true, false por padrão. A configuração por projeto exige Integrations:{organizationId}:{projectId}:GitHub:CiAppId e RequiredChecks (nomes separados por vírgula). O grant usado para revisão tem contents/read, metadata/read, pull_requests/read e checks/read, limitado ao repositório autorizado; o checkout continua com seu grant separado. Checks ausentes, pendentes, de outra App ou de outro head não são aprovação.
+
+Aprovação fixa o head registrado, exige CI bem-sucedida e preserva a tarefa em AwaitingMerge. Concluir exige merge confirmado na consulta autenticada, head esperado, reviewer ainda membro, CI exigida e primeiro parent do merge igual à base validada. Merge/squash com essa ancestralidade são suportados; rebase com ancestralidade diferente exige reconciliação/revalidação. O aplicativo não chama a operação de merge nesta implementação: a pessoa responsável realiza o merge no GitHub, conforme as permissões/política do repositório.
+
+Se código ou base mudarem, a aprovação é invalidada e a tarefa volta a Review com revalidation_required. É necessário atualizar a conexão/base e repetir a execução afetada antes de aprovar. Merge sem política confirmada permanece merge_policy_unverified; não vira Done. Uma consulta atrasada não sobrescreve outra revisão: versão da tarefa e lock compartilhado com agendamento protegem a atualização. Executar uma nova tentativa impede que a revisão antiga conclua a tarefa. Merge já confirmado permanece confirmado diante de notificações antigas.
+
+Webhooks assinados entram na inbox e são processados pelo WebhookWorker quando EnableReview está ativo. Leases de dois minutos, até três tentativas e limite de 60s por processamento. Cada evento dispara consulta do estado atual; payload não é fonte de aprovação/merge. PR/checks são limitados por publicação/head/conexão; pushes da branch base revalidam o escopo, com limite de 20 publicações por evento. Excesso fica registrado como falha, exigindo reconciliação pelo operador. Testing desativa polling e usa doubles explícitos.
+
+Solicitar ajustes reutiliza POST de execuções com ParentExecutionId, Feedback (até 2000 caracteres), Version e Idempotency-Key. Transação preserva descrição/critério/histórico, adiciona o feedback ao objetivo e cria execução ligada à anterior. Repetição consistente retorna a mesma execução. O perfil anterior é herdado quando não há seleção nova, e precisa continuar ativo. Limites continuam explícitos. A nova execução usa branch/PR próprios; o PR anterior é mantido como referência histórica e não é fechado automaticamente. Transferência automática das alterações/contexto portátil pertence à T24; feedback já registra origem e observações verificáveis.
+
+Nenhum teste padrão faz leitura externa, aprovação ou merge real. Configuração/credenciais reais e smoke autorizado pertencem ao piloto da T25.
+
+Referências oficiais: [PRs](https://docs.github.com/en/rest/pulls/pulls?apiVersion=2026-03-10), [check runs](https://docs.github.com/en/rest/checks/runs?apiVersion=2026-03-10).
