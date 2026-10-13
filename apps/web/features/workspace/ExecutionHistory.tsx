@@ -57,6 +57,7 @@ export function ExecutionHistory({ path, busy, stage, onCancel, onCount }: { pat
               <button className="sm" onClick={() => setExpanded(current => current === item.id ? null : item.id)} aria-expanded={expanded === item.id}>Ver progresso</button>
             </div>
           </div>
+          {item.state === "queued" && item.attempt === 0 && !item.cancellationRequested && <div style={{ marginTop: 12 }}><Alert tone="info">Esta execução só começa quando houver um <strong>runner ativo para este projeto</strong>. Cada projeto precisa do seu próprio runner; veja <code>docs/runner-local.md</code>.</Alert></div>}
           {expanded === item.id && <ExecutionProgress key={item.id} path={`${path}/${item.id}`} showPublication={item.id !== review?.id} />}
         </div>;
       })}

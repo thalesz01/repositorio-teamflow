@@ -67,7 +67,7 @@ export function ExecutionProgress({ path, showPublication = true }: { path: stri
       </>}
     </div>
     {error && <Alert>{error}</Alert>}
-    {!events.length && <p className="hint" style={{ marginTop: 12 }}>Aguardando o primeiro checkpoint.</p>}
+    {!events.length && <p className="hint" style={{ marginTop: 12 }}>{progress?.execution.state === "queued" ? "Aguardando um runner do projeto assumir a execução." : "Aguardando o primeiro checkpoint."}</p>}
     <ol className="timeline">{events.map(event => <li key={event.eventId} data-ok={event.succeeded === null ? undefined : String(event.succeeded)}>
       <span className="what">{event.tool ? toolLabels[event.tool] ?? event.tool : "Início"}{event.path ? ` · ${event.path}` : ""}{event.succeeded !== null && (event.succeeded ? " · passou" : " · falhou")}</span>
       <span className="when"><time dateTime={event.timestamp}>{new Date(event.timestamp).toLocaleTimeString()}</time> · tentativa {event.attempt}

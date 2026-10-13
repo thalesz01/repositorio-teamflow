@@ -90,3 +90,23 @@
   .diff-toolbar { align-items: flex-start; flex-direction: column; gap: 10px; padding: 12px 14px; }
   .diff-decision { padding: 18px; }
 }
+
+/* Modal that shows the differences without leaving the board. */
+.diff-modal { width: min(1320px, calc(100vw - 24px)); max-width: none; height: min(900px, calc(100dvh - 24px)); max-height: none; margin: auto; border-radius: var(--radius-lg); overflow: hidden; }
+.diff-modal[open] { display: flex; flex-direction: column; }
+.diff-modal-head { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.diff-modal-head > div { flex: 1; min-width: 0; }
+.diff-modal-head h2 { font-size: 17px; overflow-wrap: anywhere; }
+.diff-modal-head .eyebrow { margin-bottom: 2px; }
+.diff-modal-body { flex: 1; min-height: 0; overflow: auto; padding: 16px 20px; background: var(--bg); }
+.diff-modal-body > * + * { margin-top: 14px; }
+.diff-modal .diff-files { top: 0; }
+.diff-modal .diff-files nav { max-height: 52vh; }
+.diff-modal-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--border); background: var(--surface); }
+@media (max-width: 640px) {
+  .diff-modal { width: 100vw; height: 100dvh; border-radius: 0; }
+  .diff-modal-head { flex-wrap: wrap; padding: 12px 14px; }
+  .diff-modal-body { padding: 12px 14px; }
+  .diff-modal-foot .hint { display: none; }
+  .diff-modal-foot { justify-content: flex-end; }
+}
