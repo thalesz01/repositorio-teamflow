@@ -76,7 +76,7 @@ Em outro terminal, apps/web:
 npm run test:e2e
 ```
 
-E2E_URL altera a URL do frontend; padrão http://localhost:13000. Os testes criam contas aleatórias e workspace local exclusivo; não apagam dados alheios. O cenário cobre cadastro, tarefa, edição, teclado, conflito provocado por outro cliente, agendamento, cancelamento e logout. Relatórios são ignorados no Git.
+A API sob teste precisa liberar a pasta usada pelos testes: inicie-a com `Local__BrowseRoots__0=<pasta>` e `Local__AllowRepositorySelection=true` e informe a mesma pasta em `E2E_FOLDER_ROOT` (padrão: `teamflow-e2e-folders` no diretório temporário do sistema). E2E_URL altera a URL do frontend; padrão http://localhost:13000. Os testes criam contas aleatórias e workspace local exclusivo; não apagam dados alheios. O cenário principal cobre cadastro, criação de tarefa com a pasta escolhida no seletor, execução (fila), correção com comentário em uma linha e conclusão; revisão e publicação usam respostas simuladas. Relatórios são ignorados no Git.
 
 ## CI
 
