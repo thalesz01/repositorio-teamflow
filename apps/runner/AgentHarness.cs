@@ -60,14 +60,18 @@ public sealed class AgentHarness(IAgentModel model, IAgentCheckpoint checkpoints
 public sealed class WorkspaceTools
 {
     internal const int FileLimit = 16384;
+    private const int MaxCreated = 20;
     private readonly ExecutionWorkspace _workspace;
     private readonly ISandbox _sandbox;
     private readonly HashSet<string> _readable;
     private readonly HashSet<string> _editable;
     private readonly SandboxCommand _test;
+    private readonly System.Text.RegularExpressions.Regex[] _creatable;
+    // Files this execution added; the agent may read and rewrite them without listing each one in the policy.
+    private readonly HashSet<string> _created = new(StringComparer.Ordinal);
 
     // Paths and test commands come from trusted controller policy, never a model or repository file.
-    public WorkspaceTools(ExecutionWorkspace workspace, ISandbox sandbox, string[] readable, string[] editable, SandboxCommand test)
+    public WorkspaceTools(ExecutionWorkspace workspace, ISandbox sandbox, string[] readable, string[] editable, SandboxCommand test, string[]? create = null)
     {
         if (readable.Length > 100 || editable.Length > 100 || test.Timeout > TimeSpan.FromMinutes(5))
             throw new ArgumentException("Tool policy exceeds limits.");
@@ -77,11 +81,27 @@ public sealed class WorkspaceTools
             if (path.Replace('\\', '/').Split('/').Any(p => p.StartsWith('.')))
                 throw new ArgumentException("Hidden paths are not tool inputs.");
         }
+        create ??= [];
+        if (create.Length > 20 || create.Any(p => string.IsNullOrWhiteSpace(p) || p.Length > 240 || p.Contains("..") || Path.IsPathRooted(p)
+            || p.Contains(':') || p.Contains('\\') || p.Split('/').Any(s => s.Length == 0 || s.StartsWith('.'))))
+            throw new ArgumentException("Create patterns must be relative, use '/' and avoid hidden or traversing segments.");
+        _creatable = create.Select(ToolPolicyPatterns.ToRegex).ToArray();
         _workspace = workspace;
         _sandbox = sandbox;
         _readable = new HashSet<string>(readable, StringComparer.Ordinal);
         _editable = new HashSet<string>(editable, StringComparer.Ordinal);
         _test = test with { ReadOnlyWorkspace = true };
+    }
+
+    // A new file needs a matching Create pattern and an explicit "missing" hash; ordinary and build folders stay off limits.
+    private bool MayCreate(AgentAction action)
+    {
+        if (action.Tool != "write" || action.ExpectedHash != "missing" || action.Path is not { } path || _creatable.Length == 0 || _created.Count >= MaxCreated) return false;
+        var segments = path.Split('/');
+        if (path.Contains('\\') || segments.Any(s => s.Length == 0 || s.StartsWith('.') || ToolPolicyPatterns.SkippedDirectories.Contains(s))) return false;
+        try { if (File.Exists(_workspace.Resolve(path))) return false; }
+        catch (Exception failure) when (failure is ArgumentException or InvalidDataException or IOException) { return false; }
+        return _creatable.Any(pattern => pattern.IsMatch(path));
     }
 
     public async Task<ToolEvidence> ExecuteAsync(int step, AgentAction action, CancellationToken ct)
@@ -92,8 +112,8 @@ public sealed class WorkspaceTools
             return new(step, "test", null, result.ExitCode == 0 && !result.TimedOut && !result.OutputTruncated,
                 JsonSerializer.Serialize(new { result.ExitCode, result.TimedOut, result.OutputTruncated, _test.Executable, _test.Arguments, _test.Timeout, _test.ReadOnlyWorkspace, environment = _sandbox.Manifest }));
         }
-        if (action.Path is null || !(action.Tool == "read" ? _readable : _editable).Contains(action.Path)
-            || action.Tool is not ("read" or "write"))
+        if (action.Path is null || action.Tool is not ("read" or "write")
+            || !((action.Tool == "read" ? _readable : _editable).Contains(action.Path) || _created.Contains(action.Path) || MayCreate(action)))
             return new(step, "rejected", null, false, "tool_or_path_denied");
         var path = _workspace.Resolve(action.Path);
         if (action.Tool == "write" && !File.Exists(path) && action.ExpectedHash == "missing")
@@ -105,6 +125,7 @@ public sealed class WorkspaceTools
             var content = Encoding.UTF8.GetBytes(action.Content);
             await using var created = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, useAsync: true);
             await created.WriteAsync(content, ct);
+            _created.Add(action.Path);
             return new(step, "write", action.Path, true, "file_created", Convert.ToHexStringLower(SHA256.HashData(content)));
         }
         if (action.Tool == "read" && !File.Exists(path))

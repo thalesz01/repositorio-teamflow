@@ -11,7 +11,7 @@ namespace TeamFlow.Api.Features.Executions;
 public sealed record ProgressEvent(string EventId, Guid ExecutionId, long Sequence, int Version,
     DateTimeOffset Timestamp, int Attempt, string Kind, string? Tool, string? Path, bool? Succeeded, string? Hash);
 public sealed record ExecutionProgress(ExecutionDto Execution, decimal? EstimatedCostUsd, int? InputTokens,
-    int? OutputTokens, ProgressEvent[] Events, string? NextCursor);
+    int? OutputTokens, ProgressEvent[] Events, string? NextCursor, string? AgentSummary = null);
 
 // Project progress deliberately excludes prompts, file contents and arbitrary tool output.
 public sealed class ProgressAccess(AppDbContext db, TaskAccess tasks, TimeProvider clock)
@@ -42,12 +42,27 @@ public sealed class ProgressAccess(AppDbContext db, TaskAccess tasks, TimeProvid
         }).ToArray();
         var turns = await db.ModelTurns.AsNoTracking().Where(t => t.ExecutionId == id
             && t.OrganizationId == organizationId && t.ProjectId == projectId)
-            .Select(t => new { t.EstimatedCostUsd, t.InputTokens, t.OutputTokens }).Take(200).ToListAsync(ct);
+            .Select(t => new { t.EstimatedCostUsd, t.InputTokens, t.OutputTokens, t.Attempt, t.Sequence, t.Action }).Take(200).ToListAsync(ct);
         return new(ExecutionScheduler.ToDto(execution),
             turns.Any(t => t.EstimatedCostUsd == null) ? null : turns.Sum(t => t.EstimatedCostUsd ?? 0),
             turns.Any(t => t.InputTokens == null) ? null : turns.Sum(t => t.InputTokens ?? 0),
             turns.Any(t => t.OutputTokens == null) ? null : turns.Sum(t => t.OutputTokens ?? 0),
-            events, events.LastOrDefault()?.EventId ?? after);
+            events, events.LastOrDefault()?.EventId ?? after, Summary(turns.OrderByDescending(t => t.Attempt).ThenByDescending(t => t.Sequence).Select(t => t.Action).FirstOrDefault()));
+    }
+
+    // The agent's own closing note: what it did and what the policy kept it from doing. Free text from the model, shown as plain text.
+    private static string? Summary(string? action)
+    {
+        if (action is null) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(action);
+            var root = document.RootElement;
+            if (root.TryGetProperty("tool", out var tool) && tool.GetString() == "finish" && root.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String)
+                return content.GetString() is { Length: > 0 } text ? (text.Length > 2000 ? text[..2000] : text) : null;
+        }
+        catch (JsonException) { }
+        return null;
     }
 
     public async Task<byte[]> ReportAsync(Guid organizationId, Guid projectId, Guid taskId, Guid id,

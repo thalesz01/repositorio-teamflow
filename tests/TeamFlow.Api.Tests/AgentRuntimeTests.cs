@@ -23,7 +23,7 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
     public async Task PaidOperationIsIdempotentAndCumulativeBudgetStopsNextCallAsync()
     {
         var model = new FixtureModel { Cost = 0.009m };
-        using var setup = await SetupAsync(model, 0.01m);
+        using var setup = await SetupAsync(model, 0.01m, outputUsd: 0.9m);
         var input = new ModelTurnInput(setup.Lease, Guid.NewGuid(), 0, new(["answer.txt"], ["answer.txt"]));
         using var first = await setup.Runner.PostAsJsonAsync(setup.Path + "/model-turn", input);
         Assert.Equal("read", (await first.ReadAsync<ModelTurnReply>()).Action.Tool);
@@ -37,6 +37,31 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
         Assert.Equal(HttpStatusCode.Conflict, budget.StatusCode);
         Assert.Equal("budget_exceeded", (await budget.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
         Assert.Equal(1, model.Calls);
+    }
+
+    [Fact]
+    public async Task CreatePatternsAllowNewFilesAndTheClosingNoteReachesTheProgressAsync()
+    {
+        var model = new FixtureModel { Text = "{\"tool\":\"write\",\"path\":\"Routes/PastelRoutes.cs\",\"content\":\"class A {}\",\"expectedHash\":\"missing\"}" };
+        using var strict = await SetupAsync(model);
+        var plain = new ModelTurnInput(strict.Lease, Guid.NewGuid(), 0, new(["answer.txt"], ["answer.txt"]));
+        using var denied = await strict.Runner.PostAsJsonAsync(strict.Path + "/model-turn", plain);
+        Assert.Equal(HttpStatusCode.BadGateway, denied.StatusCode);
+        using var setup = await SetupAsync(model);
+        var allowed = new ModelTurnInput(setup.Lease, Guid.NewGuid(), 0, new(["answer.txt"], ["answer.txt"], ["**/*.cs"]));
+        using var created = await setup.Runner.PostAsJsonAsync(setup.Path + "/model-turn", allowed);
+        Assert.Equal("Routes/PastelRoutes.cs", (await created.ReadAsync<ModelTurnReply>()).Action.Path);
+        using var unsafePath = await setup.Runner.PostAsJsonAsync(setup.Path + "/model-turn", allowed with { OperationId = Guid.NewGuid(), Policy = new(["answer.txt"], ["answer.txt"], ["../*.cs"]) });
+        Assert.Equal(HttpStatusCode.BadRequest, unsafePath.StatusCode);
+        model.Text = "{\"tool\":\"finish\",\"content\":\"Feito, mas faltou criar o arquivo de rotas.\"}";
+        var next = setup.Context with { Evidence = [new(1, "write", "answer.txt", true, "file_updated", new string('a', 64))] };
+        using var checkpoint = await setup.Runner.PutAsJsonAsync(setup.Path + "/checkpoint/", new CheckpointInput(setup.Lease, next));
+        checkpoint.EnsureSuccessStatusCode();
+        using var finished = await setup.Runner.PostAsJsonAsync(setup.Path + "/model-turn", new ModelTurnInput(setup.Lease, Guid.NewGuid(), 1, new(["answer.txt"], ["answer.txt"])));
+        Assert.Equal("finish", (await finished.ReadAsync<ModelTurnReply>()).Action.Tool);
+        var path = ApiClient.TasksPath(setup.Project) + $"/{setup.Execution.TaskId}/executions/{setup.Execution.Id}";
+        using var response = await setup.Human.GetAsync(path + "/progress");
+        Assert.Equal("Feito, mas faltou criar o arquivo de rotas.", (await response.ReadAsync<ExecutionProgress>()).AgentSummary);
     }
 
     [Fact]

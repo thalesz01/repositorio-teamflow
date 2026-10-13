@@ -18,7 +18,8 @@ public sealed class ModelTurn
     public string? Action { get; set; }
 }
 
-public sealed record AgentToolPolicy(string[] Readable, string[] Editable);
+public sealed record AgentToolPolicy(string[] Readable, string[] Editable,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string[]? Create = null);
 public sealed record ModelTurnInput(Guid LeaseToken, Guid OperationId, int Sequence, AgentToolPolicy Policy);
 public sealed record ModelAction(string Tool, string? Path = null, string? Content = null, string? ExpectedHash = null);
 public sealed record ModelTurnReply(Guid OperationId, ModelAction Action, decimal? EstimatedCostUsd, int? InputTokens, int? OutputTokens);

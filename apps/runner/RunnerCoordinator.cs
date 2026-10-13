@@ -40,7 +40,7 @@ public sealed class RunnerCoordinator(IRunnerControl control, IRepositoryCheckou
                 throw new InvalidDataException("Checkout does not match the scheduled base or branch.");
             var checkpoints = new TrackingCheckpoint(new RemoteAgentCheckpoint(control, message), c => context = c);
             var effective = ToolPolicyPatterns.Expand(policy, workspace);
-            var tools = new WorkspaceTools(workspace, activeSandbox, effective.Readable, effective.Editable, effective.Test);
+            var tools = new WorkspaceTools(workspace, activeSandbox, effective.Readable, effective.Editable, effective.Test, effective.Create);
             await TransferRestore.ApplyAsync(message.Transfer, source.BaseCommit, workspace, tools, running.Token);
             context = await CheckpointRestore.RestoreAsync(context, await control.ReadRecoveryAsync(message, running.Token), workspace, tools, running.Token);
             var harness = new AgentHarness(new RemoteAgentModel(control, message, effective), checkpoints, tools);

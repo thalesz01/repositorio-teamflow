@@ -129,7 +129,7 @@ public sealed class RunnerClient : IRunnerControl, IDisposable
             message.LeaseToken,
             operationId,
             sequence = context.Evidence.Length,
-            policy = new { policy.Readable, policy.Editable }
+            policy = new { policy.Readable, policy.Editable, policy.Create }
         }, ct);
         await RunnerProtocolException.RequireSuccessAsync(response, ct);
         var reply = await response.Content.ReadFromJsonAsync<RemoteModelReply>(cancellationToken: ct)

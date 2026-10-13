@@ -3,7 +3,8 @@ using System.Text;
 
 namespace TeamFlow.Runner;
 
-public sealed record RunnerToolPolicy(string[] Readable, string[] Editable, SandboxCommand Test);
+// Create lists glob patterns for files the agent may add; existing files still need their exact path in Editable.
+public sealed record RunnerToolPolicy(string[] Readable, string[] Editable, SandboxCommand Test, string[]? Create = null);
 public sealed record RemoteModelReply(Guid OperationId, AgentAction Action, decimal? EstimatedCostUsd, int? InputTokens, int? OutputTokens);
 public sealed record RemoteExecutionResult(Guid ExecutionId, Guid OperationId, bool Validated, string Reason, int CheckpointSequence);
 

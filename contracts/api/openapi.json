@@ -3410,6 +3410,15 @@
             "items": {
               "type": "string"
             }
+          },
+          "create": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -4094,6 +4103,12 @@
             }
           },
           "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "agentSummary": {
             "type": [
               "null",
               "string"

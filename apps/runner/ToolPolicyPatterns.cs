@@ -9,7 +9,7 @@ public static class ToolPolicyPatterns
 {
     public const int MaxPaths = 100;
     private const int MaxScannedFiles = 20000;
-    private static readonly HashSet<string> SkippedDirectories = new(StringComparer.OrdinalIgnoreCase) { "bin", "obj", "node_modules" };
+    internal static readonly HashSet<string> SkippedDirectories = new(StringComparer.OrdinalIgnoreCase) { "bin", "obj", "node_modules" };
 
     public static RunnerToolPolicy Expand(RunnerToolPolicy policy, ExecutionWorkspace workspace)
     {
@@ -34,7 +34,7 @@ public static class ToolPolicyPatterns
         return expanded;
     }
 
-    private static Regex ToRegex(string pattern)
+    public static Regex ToRegex(string pattern)
     {
         var regex = new StringBuilder(@"\A");
         for (var i = 0; i < pattern.Length; i++)
