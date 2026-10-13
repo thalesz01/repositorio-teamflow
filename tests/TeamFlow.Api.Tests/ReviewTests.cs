@@ -155,22 +155,7 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
         await GitAsync(["init", "-b", "main"]);
         await GitAsync(["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "--allow-empty", "-m", "Base"]);
         var baseline = (await GitAsync(["rev-parse", "HEAD"])).Trim();
-        using (var scope = setup.Factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var execution = await db.Executions.SingleAsync(e => e.TaskId == setup.TaskId);
-            var original = JsonSerializer.Deserialize<RepositorySnapshot>(execution.RepositorySnapshot!, ApiClient.JsonOptions)!;
-            var connection = await db.GitConnections.SingleAsync(g => g.Id == original.ConnectionId);
-            connection.Provider = "local"; connection.LocalPath = workspace.Path; connection.BaseCommit = baseline;
-            var config = setup.Factory.Services.GetRequiredService<IConfiguration>();
-            config[$"Integrations:{connection.OrganizationId:D}:{connection.ProjectId:D}:Local:RepositoryPath"] = workspace.Path;
-            var content = "42"; var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
-            var plan = new PublicationPlan(execution.Id, baseline, original.Branch, "Local fixture", "Verified fixture tests", execution.CreatedAt, [new("answer.txt", content, hash)]);
-            var publication = await scope.ServiceProvider.GetRequiredService<LocalGit>().PublishAsync(connection, plan, CancellationToken.None);
-            execution.RepositorySnapshot = JsonSerializer.Serialize(original with { LocalPath = workspace.Path, RemoteUrl = workspace.Path, BaseCommit = baseline }, ApiClient.JsonOptions);
-            execution.PublishedHeadCommit = publication.HeadCommit; execution.PullRequestUrl = publication.Url;
-            await db.SaveChangesAsync();
-        }
+        await PublishLocallyAsync(setup, workspace.Path, baseline);
         using var own = await setup.Author.SendAsync(HttpMethod.Post, setup.Path + "/approve", new { });
         Assert.Equal(HttpStatusCode.Conflict, own.StatusCode);
         using var approved = await setup.Reviewer.SendAsync(HttpMethod.Post, setup.Path + "/approve", new { });
@@ -193,6 +178,75 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
             var stdout = process.StandardOutput.ReadToEndAsync(); var stderr = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync(); var output = await stdout; await stderr; Assert.Equal(0, process.ExitCode); return output;
         }
+    }
+
+    // Publishes the scenario's execution with the real LocalGit into a repository owned by the test.
+    private static async Task PublishLocallyAsync(Scenario setup, string workspacePath, string baseline)
+    {
+        using (var scope = setup.Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var execution = await db.Executions.SingleAsync(e => e.TaskId == setup.TaskId);
+            var original = JsonSerializer.Deserialize<RepositorySnapshot>(execution.RepositorySnapshot!, ApiClient.JsonOptions)!;
+            var connection = await db.GitConnections.SingleAsync(g => g.Id == original.ConnectionId);
+            connection.Provider = "local"; connection.LocalPath = workspacePath; connection.BaseCommit = baseline;
+            var config = setup.Factory.Services.GetRequiredService<IConfiguration>();
+            config[$"Integrations:{connection.OrganizationId:D}:{connection.ProjectId:D}:Local:RepositoryPath"] = workspacePath;
+            var content = "42"; var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
+            var plan = new PublicationPlan(execution.Id, baseline, original.Branch, "Local fixture", "Verified fixture tests", execution.CreatedAt, [new("answer.txt", content, hash)]);
+            var publication = await scope.ServiceProvider.GetRequiredService<LocalGit>().PublishAsync(connection, plan, CancellationToken.None);
+            execution.RepositorySnapshot = JsonSerializer.Serialize(original with { LocalPath = workspacePath, RemoteUrl = workspacePath, BaseCommit = baseline }, ApiClient.JsonOptions);
+            execution.PublishedHeadCommit = publication.HeadCommit; execution.PullRequestUrl = publication.Url;
+            await db.SaveChangesAsync();
+        }
+    }
+
+    private static async Task<string> RunGitAsync(string directory, params string[] arguments)
+    {
+        var start = new System.Diagnostics.ProcessStartInfo("git") { WorkingDirectory = directory, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        using var process = System.Diagnostics.Process.Start(start)!;
+        var stdout = process.StandardOutput.ReadToEndAsync(); var stderr = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync(); var output = await stdout; await stderr; Assert.Equal(0, process.ExitCode); return output;
+    }
+
+    [Fact]
+    public async Task MergeFromTheAppNeedsTheFlagAndAnIndependentApprovalThenMovesTheWorkingTreeAsync()
+    {
+        using var setup = await SetupAsync(realGit: true);
+        using var workspace = new TeamFlow.Runner.ExecutionWorkspace(Path.GetFullPath(Path.Combine("work", "local-merge")));
+        await RunGitAsync(workspace.Path, "init", "-b", "main");
+        await RunGitAsync(workspace.Path, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "--allow-empty", "-m", "Base");
+        var baseline = (await RunGitAsync(workspace.Path, "rev-parse", "HEAD")).Trim();
+        await PublishLocallyAsync(setup, workspace.Path, baseline);
+        var mergePath = setup.Path + "/merge";
+        using var disabled = await setup.Reviewer.SendAsync(HttpMethod.Post, mergePath, new { });
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, disabled.StatusCode);
+        Assert.Equal("merge_disabled", (await disabled.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        setup.Factory.Services.GetRequiredService<IConfiguration>()["Local:EnableMerge"] = "true";
+        using var early = await setup.Reviewer.SendAsync(HttpMethod.Post, mergePath, new { });
+        Assert.Equal(HttpStatusCode.Conflict, early.StatusCode);
+        Assert.Equal("approval_required", (await early.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        Assert.False(File.Exists(Path.Combine(workspace.Path, "answer.txt")));
+        using var approved = await setup.Reviewer.SendAsync(HttpMethod.Post, setup.Path + "/approve", new { });
+        var approval = await approved.ReadAsync<ReviewStatus>();
+        Assert.Equal("awaiting_merge", approval.State);
+        Assert.True(approval.MergeAvailable);
+        using var merged = await setup.Author.SendAsync(HttpMethod.Post, mergePath, new { });
+        var result = await merged.ReadAsync<ReviewStatus>();
+        Assert.Equal("merged", result.State);
+        Assert.False(result.MergeAvailable);
+        Assert.Equal(TaskStage.Done, await StageAsync(setup));
+        Assert.Equal("42", await File.ReadAllTextAsync(Path.Combine(workspace.Path, "answer.txt")));
+        Assert.Equal(result.MergeCommit, (await RunGitAsync(workspace.Path, "rev-parse", "main")).Trim());
+        using (var scope = setup.Factory.Services.CreateScope())
+        {
+            var execution = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Executions.SingleAsync(e => e.TaskId == setup.TaskId);
+            Assert.NotNull(execution.MergeRequestedBy);
+            Assert.NotNull(execution.MergeRequestedAt);
+        }
+        using var replay = await setup.Author.SendAsync(HttpMethod.Post, mergePath, new { });
+        Assert.Equal("merged", (await replay.ReadAsync<ReviewStatus>()).State);
     }
 
     private static async Task<TaskStage> StageAsync(Scenario setup)

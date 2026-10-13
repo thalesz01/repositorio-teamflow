@@ -208,6 +208,12 @@ namespace TeamFlow.Api.Migrations
                     b.Property<string>("MemoryContext")
                         .HasColumnType("jsonb");
 
+                    b.Property<DateTimeOffset?>("MergeRequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("MergeRequestedBy")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid");
 
@@ -961,6 +967,9 @@ namespace TeamFlow.Api.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("OrganizationId")

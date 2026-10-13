@@ -74,6 +74,7 @@ builder.Services.AddScoped<LocalGit>();
 builder.Services.AddScoped<ITextModel, CodexTextModel>();
 builder.Services.AddScoped<IGitPublisher>(services => services.GetRequiredService<LocalGit>());
 builder.Services.AddScoped<IGitReview>(services => services.GetRequiredService<LocalGit>());
+builder.Services.AddScoped<IGitMerge>(services => services.GetRequiredService<LocalGit>());
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);

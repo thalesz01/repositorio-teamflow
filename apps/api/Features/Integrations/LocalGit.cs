@@ -13,10 +13,16 @@ public sealed record PublishedPullRequest(long Number, string Url, string BaseCo
 public sealed record GitReviewSnapshot(string HeadCommit, string BaseCommit, bool CiPassed,
     bool Merged, string? MergeCommit, string? MergeBaseParent);
 
-// Git is a real boundary: tests replace these two seams, production uses the local implementation.
+// Git is a real boundary: tests replace these seams, production uses the local implementation.
 public interface IGitPublisher
 {
     Task<PublishedPullRequest> PublishAsync(GitConnection connection, PublicationPlan plan, CancellationToken ct);
+}
+
+public interface IGitMerge
+{
+    /// <summary>Fast-forwards the base branch to an already approved head; never creates a commit.</summary>
+    Task MergeAsync(GitConnection connection, RepositorySnapshot snapshot, string head, CancellationToken ct);
 }
 
 public interface IGitReview
@@ -25,8 +31,39 @@ public interface IGitReview
 }
 
 // Git plumbing writes only objects and the execution ref; it never checks out or edits the user's files.
-public sealed class LocalGit(LocalRepository local) : IGitPublisher, IGitReview
+public sealed class LocalGit(LocalRepository local) : IGitPublisher, IGitReview, IGitMerge
 {
+    public async Task MergeAsync(GitConnection connection, RepositorySnapshot snapshot, string head, CancellationToken ct)
+    {
+        if (!GitRules.IsCommit(head)) throw new ApiException(400, "invalid_repository", "Invalid merge commit.");
+        var path = local.AuthorizedPath(connection.OrganizationId, connection.ProjectId, connection.LocalPath);
+        var branchRef = "refs/heads/" + snapshot.Branch;
+        var execution = (await RunAsync(path, ["rev-parse", "--verify", branchRef], null, null, ct)).Trim();
+        if (execution != head) throw new ApiException(409, "branch_conflict", "The execution branch no longer points to the approved commit.");
+        var current = await local.VerifyAsync(path, connection.BaseBranch, ct);
+        if (current == head) return;
+        if (current != snapshot.BaseCommit) throw new ApiException(409, "base_changed", "The base branch moved after the review; refresh and review again.");
+        var parent = (await RunAsync(path, ["rev-parse", head + "^"], null, null, ct)).Trim();
+        if (parent != current) throw new ApiException(409, "merge_failed", "The approved commit is not a fast-forward of the base branch.");
+        var checkedOut = (await RunAsync(path, ["symbolic-ref", "--quiet", "--short", "HEAD"], null, null, ct, allowMissing: true)).Trim();
+        if (checkedOut == connection.BaseBranch)
+        {
+            // The base branch is the folder's current branch: only a clean tracked tree may be moved under the user's feet.
+            var dirty = await RunAsync(path, ["status", "--porcelain", "--untracked-files=no"], null, null, ct);
+            if (dirty.Length > 0)
+                throw new ApiException(409, "merge_requires_clean_checkout", "The project folder has local changes. Commit or discard them, then try again.");
+            try { await RunAsync(path, ["merge", "--ff-only", "--no-edit", head], null, null, ct); }
+            catch (ApiException failure) when (failure.Code == "git_local_failed")
+            { throw new ApiException(409, "merge_failed", "Git could not fast-forward the folder (for example, an untracked file would be overwritten)."); }
+        }
+        else
+        {
+            // Another branch is checked out, so no working tree depends on the base branch: move only the reference, verifying its old value.
+            await RunAsync(path, ["update-ref", "refs/heads/" + connection.BaseBranch, head, current], null, null, ct);
+        }
+        if (await local.VerifyAsync(path, connection.BaseBranch, ct) != head) throw new ApiException(409, "merge_failed", "The base branch did not move to the approved commit.");
+    }
+
     public async Task PrepareBaseAsync(GitConnection connection, CancellationToken ct)
     {
         var folder = await local.InspectAsync(connection.OrganizationId, connection.ProjectId, connection.LocalPath, ct);

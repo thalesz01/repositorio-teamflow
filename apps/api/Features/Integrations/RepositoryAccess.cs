@@ -8,7 +8,7 @@ using TeamFlow.Api.Http;
 namespace TeamFlow.Api.Features.Integrations;
 
 public sealed class RepositoryAccess(AppDbContext db, LeaseAccess leases, LocalRepository local, TimeProvider clock, LocalGit localGit,
-    IGitPublisher publisher, IGitReview review)
+    IGitPublisher publisher, IGitReview review, IGitMerge merge)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -50,6 +50,12 @@ public sealed class RepositoryAccess(AppDbContext db, LeaseAccess leases, LocalR
         var result = await review.ReadAsync(connection, snapshot, expectedHead, ct);
         await RequireUnchangedAsync(connection, snapshot, "Local connection changed during review.", ct);
         return result;
+    }
+
+    public async Task MergeAsync(Guid organizationId, Guid projectId, RepositorySnapshot snapshot, string head, CancellationToken ct)
+    {
+        var connection = await RequireCurrentAsync(organizationId, projectId, snapshot, ct);
+        await merge.MergeAsync(connection, snapshot, head, ct);
     }
 
     public async Task<string> LocalDiffAsync(Guid organizationId, Guid projectId, RepositorySnapshot snapshot, string head, CancellationToken ct)

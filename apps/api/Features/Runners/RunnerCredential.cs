@@ -9,10 +9,13 @@ public sealed class RunnerCredential
     public string TokenHash { get; set; } = "";
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
+    // Updated by the runner's claim polling; lets the product tell "no runner" from "runner idle".
+    public DateTimeOffset? LastSeenAt { get; set; }
 }
 
 public sealed record RunnerInput(int ValidityDays = 7);
 public sealed record RunnerDto(Guid Id, Guid WorkerId, DateTimeOffset ExpiresAt, DateTimeOffset? RevokedAt);
+public sealed record RunnerStatusDto(bool Configured, bool Online, DateTimeOffset? LastSeenAt);
 public sealed record IssuedRunner(RunnerDto Credential, string Token);
 public sealed record ClaimInput(int LeaseSeconds = 30);
 public sealed record HeartbeatInput(Guid LeaseToken, int LeaseSeconds = 30);

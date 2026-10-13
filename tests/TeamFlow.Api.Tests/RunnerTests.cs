@@ -16,6 +16,33 @@ namespace TeamFlow.Api.Tests;
 public sealed class RunnerTests(DatabaseFixture fixture) : IClassFixture<DatabaseFixture>
 {
     [Fact]
+    public async Task StatusSeparatesNoRunnerFromAnIdleRunnerAndAnOnlineOneAsync()
+    {
+        using var human = fixture.Factory.CreateClient();
+        using var outsider = fixture.Factory.CreateClient();
+        await human.RegisterAsync();
+        await outsider.RegisterAsync();
+        var project = await human.CreateProjectAsync();
+        var runners = $"/api/v1/organizations/{project.OrganizationId}/projects/{project.Id}/runners";
+        var none = await human.GetFromJsonAsync<RunnerStatusDto>(runners + "/status", ApiClient.JsonOptions);
+        Assert.Equal(new RunnerStatusDto(false, false, null), none);
+        using var issue = await human.SendAsync(HttpMethod.Post, runners + "/", new RunnerInput());
+        var issued = await issue.ReadAsync<IssuedRunner>();
+        var configured = await human.GetFromJsonAsync<RunnerStatusDto>(runners + "/status", ApiClient.JsonOptions);
+        Assert.True(configured!.Configured); Assert.False(configured.Online); Assert.Null(configured.LastSeenAt);
+        using var technical = fixture.Factory.CreateClient();
+        technical.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued.Token);
+        using var claim = await technical.PostAsJsonAsync("/internal/v1/executions/claim", new ClaimInput());
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        var online = await human.GetFromJsonAsync<RunnerStatusDto>(runners + "/status", ApiClient.JsonOptions);
+        Assert.True(online!.Online); Assert.NotNull(online.LastSeenAt);
+        fixture.Clock.Advance(TimeSpan.FromSeconds(90));
+        Assert.False((await human.GetFromJsonAsync<RunnerStatusDto>(runners + "/status", ApiClient.JsonOptions))!.Online);
+        using var denied = await outsider.GetAsync(runners + "/status");
+        Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
+    }
+
+    [Fact]
     public async Task TechnicalIdentityIsScopedRevocableAndSeparateFromHumanSessionsAsync()
     {
         using var human = fixture.Factory.CreateClient();

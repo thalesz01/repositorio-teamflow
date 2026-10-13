@@ -9,7 +9,7 @@ using TeamFlow.Api.Http;
 
 namespace TeamFlow.Api.Features.Executions;
 
-public sealed record ReviewStatus(string State, string? HeadCommit, bool CiPassed, Guid? ApprovedBy, string? MergeCommit);
+public sealed record ReviewStatus(string State, string? HeadCommit, bool CiPassed, Guid? ApprovedBy, string? MergeCommit, bool MergeAvailable = false);
 
 public sealed class ReviewAccess(AppDbContext db, TaskAccess tasks, RepositoryAccess repositories,
     IConfiguration configuration, TimeProvider clock, TeamFlow.Api.Features.Organizations.OrganizationAccess organizations, TeamFlow.Api.Features.Memory.MemoryAccess memory)
@@ -92,11 +92,34 @@ public sealed class ReviewAccess(AppDbContext db, TaskAccess tasks, RepositoryAc
         return Status(execution);
     }
 
+    /// <summary>Fast-forwards the base branch to the approved head, then confirms the merge through the normal review check.</summary>
+    public async Task<ReviewStatus> MergeAsync(Guid id, Guid requestedBy, CancellationToken ct)
+    {
+        if (!configuration.GetValue<bool>("Local:EnableMerge"))
+            throw new ApiException(503, "merge_disabled", "Merging from the app is disabled on this server.");
+        // Refresh first: approval, head, base and parent must still hold at the moment of the merge.
+        var refreshed = await ReconcileAsync(id, null, ct);
+        if (refreshed.State == "merged") return refreshed;
+        var execution = await RequireAsync(id, ct);
+        if (refreshed.State != "awaiting_merge" || execution.ReviewApprovedBy is null || execution.PublishedHeadCommit is not { } head
+            || execution.ReviewApprovedHead != head || !await organizations.IsMemberAsync(execution.OrganizationId, execution.ReviewApprovedBy.Value, ct))
+            throw new ApiException(409, "approval_required", "An independent approval of the current commit is required before merging.");
+        var source = JsonSerializer.Deserialize<RepositorySnapshot>(execution.RepositorySnapshot ?? "null", JsonOptions)
+            ?? throw new InvalidDataException("Missing repository snapshot.");
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(60));
+        await repositories.MergeAsync(execution.OrganizationId, execution.ProjectId, source, head, timeout.Token);
+        await db.Executions.Where(e => e.Id == id).ExecuteUpdateAsync(set => set
+            .SetProperty(e => e.MergeRequestedBy, requestedBy).SetProperty(e => e.MergeRequestedAt, clock.GetUtcNow()), ct);
+        return await ReconcileAsync(id, null, ct);
+    }
+
     private async Task<Execution> RequireAsync(Guid id, CancellationToken ct) =>
         await db.Executions.AsNoTracking().SingleOrDefaultAsync(e => e.Id == id, ct)
             ?? throw new ApiException(404, "execution_not_found", "Execution not found.");
-    private static ReviewStatus Status(Execution execution) => new(execution.ReviewState ?? "not_checked", execution.ReviewHeadCommit,
-        execution.ReviewCiPassed, execution.ReviewApprovedBy, execution.ConfirmedMergeCommit);
+    private ReviewStatus Status(Execution execution) => new(execution.ReviewState ?? "not_checked", execution.ReviewHeadCommit,
+        execution.ReviewCiPassed, execution.ReviewApprovedBy, execution.ConfirmedMergeCommit,
+        execution.ReviewState == "awaiting_merge" && configuration.GetValue<bool>("Local:EnableMerge"));
 }
 
 public static class ReviewEndpoints
@@ -107,13 +130,14 @@ public static class ReviewEndpoints
             .RequireAuthorization().WithTags("Reviews");
         group.MapGet("/review", async (Guid organizationId, Guid projectId, Guid taskId, Guid executionId, ClaimsPrincipal user,
             ReviewAccess reviews, CancellationToken ct) => await reviews.ReadAsync(organizationId, projectId, taskId, executionId, user, ct));
-        foreach (var command in new[] { "approve", "refresh" })
+        foreach (var command in new[] { "approve", "refresh", "merge" })
         {
             var approve = command == "approve";
             group.MapPost("/review/" + command, async (Guid organizationId, Guid projectId, Guid taskId, Guid executionId,
                 ClaimsPrincipal user, ReviewAccess reviews, CancellationToken ct) =>
             {
                 await reviews.ReadAsync(organizationId, projectId, taskId, executionId, user, ct);
+                if (command == "merge") return await reviews.MergeAsync(executionId, AuthEndpoints.UserId(user), ct);
                 return await reviews.ReconcileAsync(executionId, approve ? AuthEndpoints.UserId(user) : null, ct);
             });
         }

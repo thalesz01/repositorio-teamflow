@@ -13,6 +13,8 @@ public sealed class Execution
     public string? ReviewApprovedHead { get; set; }
     public DateTimeOffset? ReviewCheckedAt { get; set; }
     public string? ConfirmedMergeCommit { get; set; }
+    public Guid? MergeRequestedBy { get; set; }
+    public DateTimeOffset? MergeRequestedAt { get; set; }
     public string? PublicationState { get; set; }
     public int PublicationAttempts { get; set; }
     public Guid? PublicationLease { get; set; }

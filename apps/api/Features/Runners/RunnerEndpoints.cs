@@ -25,6 +25,17 @@ public static class RunnerEndpoints
             await db.SaveChangesAsync(ct);
             return Results.Ok(issued.Response);
         }).Produces<IssuedRunner>();
+        // Any member may see whether the project can run work; managing credentials stays with the owner.
+        group.MapGet("/status", async (Guid organizationId, Guid projectId, ClaimsPrincipal user, AppDbContext db,
+            ProjectAccess access, TimeProvider clock, CancellationToken ct) =>
+        {
+            await access.RequireAsync(organizationId, projectId, user, ct);
+            var now = clock.GetUtcNow();
+            var active = await db.RunnerCredentials.AsNoTracking().Where(r => r.OrganizationId == organizationId
+                && r.ProjectId == projectId && r.RevokedAt == null && r.ExpiresAt > now).Select(r => r.LastSeenAt).ToListAsync(ct);
+            var lastSeen = active.Max();
+            return Results.Ok(new RunnerStatusDto(active.Count > 0, lastSeen is { } seen && now - seen <= TimeSpan.FromSeconds(60), lastSeen));
+        }).Produces<RunnerStatusDto>();
         group.MapGet("/", async (Guid organizationId, Guid projectId, ClaimsPrincipal user, AppDbContext db,
             ProjectAccess access, CancellationToken ct, int page = 1, int pageSize = 20) =>
         {
@@ -62,10 +73,14 @@ public static class RunnerEndpoints
         });
 
         var internalGroup = app.MapGroup("/internal/v1/executions").RequireAuthorization("runner").RequireRateLimiting("runner").WithTags("Runner protocol");
-        internalGroup.MapPost("/claim", async (ClaimInput input, ClaimsPrincipal user, ExecutionScheduler scheduler, AppDbContext db, CancellationToken ct) =>
+        internalGroup.MapPost("/claim", async (ClaimInput input, ClaimsPrincipal user, ExecutionScheduler scheduler, AppDbContext db, TimeProvider clock, CancellationToken ct) =>
         {
             ValidateLease(input.LeaseSeconds);
             var runnerId = Id(user, "runnerId");
+            // Polling is the runner's heartbeat; writing at most every 15 seconds keeps the table quiet.
+            var now = clock.GetUtcNow();
+            await db.RunnerCredentials.Where(r => r.Id == runnerId && (r.LastSeenAt == null || r.LastSeenAt < now.AddSeconds(-15)))
+                .ExecuteUpdateAsync(set => set.SetProperty(r => r.LastSeenAt, now), ct);
             var lease = await scheduler.ClaimAsync(Id(user, "workerId"), input.LeaseSeconds, ct,
                 Id(user, "organizationId"), Id(user, "projectId"), runnerId);
             if (lease is null) return Results.NoContent();
