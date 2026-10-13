@@ -2,17 +2,29 @@ using System.Text.Json;
 
 namespace TeamFlow.Runner;
 
-public sealed class RunnerCoordinator(IRunnerControl control, IRepositoryCheckout checkout, ISandbox sandbox)
+/// <summary>Tools and sandbox the operator configured for one project folder.</summary>
+public sealed record FolderProfile(RunnerToolPolicy Policy, ISandbox Sandbox);
+
+// The operator may configure a profile per folder; the folder comes from the claimed execution, never from the repository's contents.
+public sealed class RunnerCoordinator(IRunnerControl control, IRepositoryCheckout checkout, ISandbox sandbox, Func<string?, FolderProfile?>? folderProfile = null)
 {
-    public async Task<RemoteExecutionResult?> RunOnceAsync(string workspaceRoot, RunnerToolPolicy policy, CancellationToken ct)
+    private static void Validate(RunnerToolPolicy policy)
     {
         if (policy is null || policy.Readable is null || policy.Editable is null || policy.Test is null
             || policy.Test.Arguments is null || string.IsNullOrWhiteSpace(policy.Test.Executable)
             || policy.Test.Timeout < TimeSpan.FromMilliseconds(100) || policy.Test.Timeout > TimeSpan.FromMinutes(5))
             throw new ArgumentException("Invalid controller policy.");
+    }
+
+    public async Task<RemoteExecutionResult?> RunOnceAsync(string workspaceRoot, RunnerToolPolicy policy, CancellationToken ct)
+    {
+        Validate(policy);
         var message = await control.ClaimAsync(120, ct);
         if (message is null) return null;
         var source = message.Repository?.Deserialize<CheckoutSource>(new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var profile = folderProfile?.Invoke(source?.LocalPath);
+        var activeSandbox = sandbox;
+        if (profile is not null) { Validate(profile.Policy); policy = profile.Policy; activeSandbox = profile.Sandbox; }
         var context = new PortableContext(1, message.ExecutionId, message.Snapshot.Title + "\n" + message.Snapshot.Description,
             message.Snapshot.AcceptanceCriteria, source?.BaseCommit ?? "", [], [], message.Memory, message.Transfer);
         using var deadline = new CancellationTokenSource(message.DeadlineAt - DateTimeOffset.UtcNow);
@@ -28,7 +40,7 @@ public sealed class RunnerCoordinator(IRunnerControl control, IRepositoryCheckou
                 throw new InvalidDataException("Checkout does not match the scheduled base or branch.");
             var checkpoints = new TrackingCheckpoint(new RemoteAgentCheckpoint(control, message), c => context = c);
             var effective = ToolPolicyPatterns.Expand(policy, workspace);
-            var tools = new WorkspaceTools(workspace, sandbox, effective.Readable, effective.Editable, effective.Test);
+            var tools = new WorkspaceTools(workspace, activeSandbox, effective.Readable, effective.Editable, effective.Test);
             await TransferRestore.ApplyAsync(message.Transfer, source.BaseCommit, workspace, tools, running.Token);
             context = await CheckpointRestore.RestoreAsync(context, await control.ReadRecoveryAsync(message, running.Token), workspace, tools, running.Token);
             var harness = new AgentHarness(new RemoteAgentModel(control, message, effective), checkpoints, tools);

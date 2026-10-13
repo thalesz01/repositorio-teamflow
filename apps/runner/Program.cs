@@ -24,7 +24,27 @@ ExecutionWorkspace.CleanupExpired(config.WorkspaceRoot, DateTimeOffset.UtcNow);
 var sandbox = new DockerSandbox(config.Sandbox);
 using (var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(20)))
     await sandbox.CleanupExpiredAsync(config.WorkspaceRoot, cleanup.Token);
-var coordinator = new RunnerCoordinator(client, new GitCheckout(), sandbox);
+// Folders listed in the controller configuration get their own tools and sandbox image; any other folder uses "policy"/"sandbox".
+// The file is read again for each execution, so adding a folder does not require restarting the runner.
+var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+var sandboxes = new Dictionary<string, DockerSandbox>();
+FolderProfile? ProfileFor(string? folder)
+{
+    if (folder is null) return null;
+    var current = config;
+    try { current = JsonSerializer.Deserialize<RunnerSettings>(File.ReadAllText(configPath), new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? config; }
+    catch (Exception failure) when (failure is IOException or JsonException) { }
+    foreach (var (key, entry) in current.Folders ?? [])
+    {
+        if (!comparer.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(key)), Path.TrimEndingDirectorySeparator(folder))) continue;
+        var limits = entry.Sandbox ?? current.Sandbox;
+        var identity = JsonSerializer.Serialize(limits);
+        if (!sandboxes.TryGetValue(identity, out var folderSandbox)) sandboxes[identity] = folderSandbox = new DockerSandbox(limits);
+        return new FolderProfile(entry.Policy, folderSandbox);
+    }
+    return null;
+}
+var coordinator = new RunnerCoordinator(client, new GitCheckout(), sandbox, ProfileFor);
 if (mode == "run")
 {
     try
@@ -40,4 +60,6 @@ var completed = await coordinator
 Console.WriteLine(JsonSerializer.Serialize(completed, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
 return completed is null || completed.Validated ? 0 : 1;
 
-public sealed record RunnerSettings(string Origin, Guid OrganizationId, Guid ProjectId, Guid WorkerId, string WorkspaceRoot, RunnerToolPolicy Policy, SandboxLimits? Sandbox = null);
+public sealed record FolderSettings(RunnerToolPolicy Policy, SandboxLimits? Sandbox = null);
+public sealed record RunnerSettings(string Origin, Guid OrganizationId, Guid ProjectId, Guid WorkerId, string WorkspaceRoot, RunnerToolPolicy Policy,
+    SandboxLimits? Sandbox = null, Dictionary<string, FolderSettings>? Folders = null);

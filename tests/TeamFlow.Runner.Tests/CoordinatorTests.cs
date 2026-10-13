@@ -48,6 +48,29 @@ public sealed class CoordinatorTests
         Assert.NotNull(control.WorkspacePath);
         Assert.False(Directory.Exists(control.WorkspacePath));
     }
+    [Fact]
+    public async Task FolderProfileSuppliesToolsAndSandboxOnlyForItsFolderAsync()
+    {
+        var wrongPolicy = new RunnerToolPolicy(["other.txt"], ["other.txt"], new("test", [], TimeSpan.FromSeconds(1)));
+        var folder = Path.GetFullPath("fixture-repo");
+        var defaultSandbox = new FixtureSandbox();
+        var folderSandbox = new FixtureSandbox();
+        var profile = new FolderProfile(Policy(), folderSandbox);
+        // Without a matching profile the default policy denies answer.txt, so nothing is approved.
+        var unmatched = await new RunnerCoordinator(new FixtureControl(), new FixtureCheckout(), defaultSandbox, path => path == folder + "-other" ? profile : null)
+            .RunOnceAsync(Path.GetFullPath("work/coordinator"), wrongPolicy, default);
+        Assert.NotNull(unmatched);
+        Assert.False(unmatched.Validated);
+        Assert.Null(folderSandbox.WorkspacePath);
+        // The profile of the claimed execution's folder supplies both the policy and the sandbox.
+        var matched = await new RunnerCoordinator(new FixtureControl(), new FixtureCheckout(), defaultSandbox, path => path == folder ? profile : null)
+            .RunOnceAsync(Path.GetFullPath("work/coordinator"), wrongPolicy, default);
+        Assert.NotNull(matched);
+        Assert.True(matched.Validated);
+        Assert.NotNull(folderSandbox.WorkspacePath);
+        Assert.Null(defaultSandbox.WorkspacePath);
+    }
+
     private static RunnerToolPolicy Policy() => new(["answer.txt"], ["answer.txt"], new("test", [], TimeSpan.FromSeconds(1)));
     private sealed class FixtureControl : IRunnerControl
     {
