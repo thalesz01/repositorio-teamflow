@@ -250,3 +250,18 @@
 
 .field-legend { padding: 0; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
 .stage-error { padding: 16px; }
+
+/* First steps: what the project needs before work can run. */
+.setup { margin-bottom: 16px; }
+.setup .card-header { padding: 16px 20px; }
+.setup-steps { list-style: none; margin: 0; padding: 4px 20px 8px; display: grid; }
+.setup-steps li { display: grid; grid-template-columns: 28px 1fr auto; gap: 14px; align-items: start; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.setup-steps li:last-child { border-bottom: 0; }
+.setup-steps h3 { font-size: 14px; }
+.setup-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; font-size: 13px; font-weight: 650; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border-strong); }
+.setup-steps li[data-state="ready"] .setup-mark { color: var(--success); background: var(--success-soft); border-color: transparent; }
+.setup-steps li[data-state="ready"] h3 { color: var(--text-2); }
+.command { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.command code { flex: 1 1 280px; min-width: 0; padding: 7px 10px; font-size: 12.5px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); overflow-wrap: anywhere; user-select: all; }
+.env-strip { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; color: var(--text-3); font-size: 13px; }
+@media (max-width: 640px) { .setup-steps li { grid-template-columns: 28px 1fr; } .setup-steps li > button { grid-column: 2; justify-self: start; } }

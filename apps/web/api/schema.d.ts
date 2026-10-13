@@ -1084,6 +1084,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/executions/{executionId}/review/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                    taskId: string;
+                    executionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReviewStatus"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organizationId}/projects/{projectId}/memory": {
         parameters: {
             query?: never;
@@ -1618,6 +1658,44 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/runners/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RunnerStatusDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3101,6 +3179,8 @@ export interface components {
             /** Format: uuid */
             approvedBy: null | string;
             mergeCommit: null | string;
+            /** @default false */
+            mergeAvailable: boolean;
         };
         RunnerDto: {
             /** Format: uuid */
@@ -3157,6 +3237,12 @@ export interface components {
             agentProfileId: null | string;
             memory?: unknown;
             transfer?: unknown;
+        };
+        RunnerStatusDto: {
+            configured: boolean;
+            online: boolean;
+            /** Format: date-time */
+            lastSeenAt: null | string;
         };
         SearchInput: {
             query: string;

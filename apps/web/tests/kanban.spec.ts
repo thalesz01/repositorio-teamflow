@@ -86,13 +86,18 @@ test("cadastro, edição, movimentação por teclado, rejeição e fila", async 
   } }));
   const reviewState = { state: "review_required", headCommit: "b".repeat(40), ciPassed: true, approvedBy: null, mergeCommit: null };
   await page.route(`**${executionPath}/review`, route => route.fulfill({ json: reviewState }));
-  await page.route(`**${executionPath}/review/approve`, route => route.fulfill({ json: { ...reviewState, state: "awaiting_merge" } }));
+  await page.route(`**${executionPath}/review/approve`, route => route.fulfill({ json: { ...reviewState, state: "awaiting_merge", mergeAvailable: true } }));
+  await page.route(`**${executionPath}/review/merge`, route => route.fulfill({ json: { ...reviewState, state: "merged", mergeCommit: "d".repeat(40), mergeAvailable: false } }));
   await page.route(`**${executionPath}/review/refresh`, route => route.fulfill({ json: { ...reviewState, state: "merged", mergeCommit: "d".repeat(40) } }));
   await page.getByRole("button", { name: "Ver progresso", exact: true }).click();
   const reviewPanel = page.getByRole("region", { name: "Revisão do commit", exact: true });
   await expect(reviewPanel).toContainText("Aguardando revisão independente");
   await reviewPanel.getByRole("button", { name: "Aprovar commit revisado" }).click();
   await expect(reviewPanel).toContainText("Aprovada, aguardando merge");
+  // With merging enabled on the server, the app itself finishes the flow after the independent approval.
+  await reviewPanel.getByRole("button", { name: "Fazer merge agora" }).click();
+  await expect(reviewPanel).toContainText("Merge confirmado");
+  await expect(reviewPanel.getByRole("button", { name: "Fazer merge agora" })).toHaveCount(0);
   await reviewPanel.getByRole("button", { name: "Consultar revisão e merge" }).click();
   await expect(reviewPanel).toContainText("Merge confirmado");
   await expect(reviewPanel.getByRole("button", { name: "Aprovar commit revisado" })).toBeDisabled();
@@ -107,7 +112,17 @@ test("cadastro, edição, movimentação por teclado, rejeição e fila", async 
   } }));
   const directReview = page.getByRole("region", { name: "Revisão da execução mais recente", exact: true });
   await expect(directReview).toBeVisible({ timeout: 10000 });
-  await expect(directReview.getByRole("link", { name: "Abrir diff local" })).toBeVisible();
+  await expect(directReview.getByRole("button", { name: "Ver diferenças" })).toBeVisible();
+  // The differences open in a modal over the board, with the same reader as the full page.
+  await page.route(`**/api/v1/organizations/${organization.id}/projects/${projects.items[0].id}/repository/local/reviews/**`, route => route.fulfill({ contentType: "text/plain",
+    body: "diff --git a/add.sh b/add.sh\nindex 1111111..2222222 100644\n--- a/add.sh\n+++ b/add.sh\n@@ -1,2 +1,2 @@\n #!/bin/sh\n-echo $(($1 - $2))\n+echo $(($1 + $2))\n" }));
+  await directReview.getByRole("button", { name: "Ver diferenças" }).click();
+  const diffModal = page.getByRole("dialog", { name: /^Diferenças da execução/ });
+  await expect(diffModal.getByRole("table", { name: "Diff de add.sh" })).toContainText("echo $(($1 + $2))");
+  await expect(diffModal.getByText("+1", { exact: true }).first()).toBeVisible();
+  await diffModal.getByRole("button", { name: "Fechar diferenças" }).press("Escape");
+  await expect(diffModal).toHaveCount(0);
+  await expect(directReview.getByRole("button", { name: "Ver diferenças" })).toBeFocused();
   await expect(directReview.getByRole("button", { name: "Aprovar commit revisado" })).toBeVisible();
   await expect(progress).toHaveCount(0);
   await expect(page.getByText(/^Execução anterior/)).toBeVisible();

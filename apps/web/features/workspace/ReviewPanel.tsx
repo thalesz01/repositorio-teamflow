@@ -29,7 +29,7 @@ export function ReviewPanel({ path }: { path: string }) {
       .catch(failure => { if (!controller.signal.aborted) setError(errorMessage(failure)); });
     return () => controller.abort();
   }, [path]);
-  async function review(command: "approve" | "refresh") {
+  async function review(command: "approve" | "refresh" | "merge") {
     setBusy(true); setError(null); setNotice(null);
     try { setStatus(await api<Schema["ReviewStatus"]>(`${path}/review/${command}`, { method: "POST" })); }
     catch (failure) { setError(errorMessage(failure)); }
@@ -56,6 +56,7 @@ export function ReviewPanel({ path }: { path: string }) {
     finally { setBusy(false); }
   }
   const merged = status?.state === "merged";
+  const canMerge = !!status?.mergeAvailable;
   return <section aria-label="Revisão do commit" className="step-list">
     {status && <div className="review-status">
       <span className={`badge ${tones[status.state] ?? ""}`}>{labels[status.state] ?? status.state}</span>
@@ -65,9 +66,12 @@ export function ReviewPanel({ path }: { path: string }) {
     {notice && <Alert tone="success" role="status">{notice}</Alert>}
     <div className="review-actions">
       <button disabled={busy} onClick={() => void review("refresh")}><Icon name="refresh" size="sm" />Consultar revisão e merge</button>
-      <button className="primary" disabled={busy || merged} onClick={() => void review("approve")}><Icon name="check" size="sm" />Aprovar commit revisado</button>
+      <button className={canMerge ? undefined : "primary"} disabled={busy || merged} onClick={() => void review("approve")}><Icon name="check" size="sm" />Aprovar commit revisado</button>
+      {canMerge && <button className="primary" disabled={busy} onClick={() => void review("merge")}><Icon name="merge" size="sm" />Fazer merge agora</button>}
     </div>
-    <p className="hint">Outra pessoa da equipe aprova o commit testado. Faça o merge local com <code>git merge --ff-only</code> e consulte novamente para confirmar a conclusão.</p>
+    <p className="hint">{canMerge
+      ? "Aprovado. O merge avança a branch base para o commit aprovado, sem criar commit novo, e conclui a tarefa."
+      : <>Outra pessoa da equipe aprova o commit testado. {status?.state === "awaiting_merge" ? <>Faça o merge local com <code>git merge --ff-only</code> e consulte novamente para confirmar a conclusão.</> : "Depois da aprovação, o merge é confirmado aqui."}</>}</p>
     {!merged && <><hr />
     <div className="stack">
       <h4>Pedir ajustes</h4>

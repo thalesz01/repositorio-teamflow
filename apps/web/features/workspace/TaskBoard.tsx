@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { PlanningPanel } from "./PlanningPanel";
 import { MemoryPanel } from "./MemoryPanel";
 import { IntegrationPanel } from "./IntegrationPanel";
+import { SetupChecklist } from "./SetupChecklist";
 import { TaskDrawer, type DrawerTab } from "./TaskDrawer";
 import { Alert, Avatar, EmptyState, Icon, PageHeader } from "./ui";
 import { api, errorMessage, listAll, stageLabels, type Schema, type Stage, type TaskItem } from "./api";
@@ -100,6 +101,7 @@ export function TaskBoard({ project, members, canManageIntegrations, view, onVie
         <span><strong>{loaded ? count(["done"]) : "—"}</strong> concluída(s)</span>
         <span className="sync" role="status" aria-live="polite">{busy ? <><span className="spinner" aria-hidden="true" />Sincronizando…</> : needle ? `${filtered.length} de ${tasks.length} no filtro` : ""}</span>
       </div>
+      <SetupChecklist organizationId={project.organizationId} projectId={project.id} active={view === "board"} canManage={canManageIntegrations} onOpenSettings={() => onViewChange("settings")} />
       {error && <Alert>{error}</Alert>}
       {loaded && !tasks.length ? <div className="card"><EmptyState icon="board" title="Seu quadro está vazio" action={<button className="primary" onClick={() => setDrawer({ kind: "new" })}><Icon name="plus" size="sm" />Criar a primeira tarefa</button>}>
         Crie uma tarefa para começar, ou use <strong>Demandas</strong> para transformar um problema em uma tarefa com critérios de aceitação.</EmptyState></div>
