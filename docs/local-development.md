@@ -2,6 +2,17 @@
 
 Decisão aceita em 2026-10-12 por solicitação do responsável. O fluxo usa `codex.exe` instalado na máquina e repositórios Git locais. Em 2026-10-13 a ADR 0008 removeu GitHub App, OpenAI API e webhooks: este é o único fluxo suportado e não depende de repositório Git remoto.
 
+## Primeiros passos pela interface
+
+O quadro de cada projeto mostra "Primeiros passos" enquanto algo falta: **pasta do projeto**, **Codex da máquina** e **runner do projeto** (ativo quando consultou a fila nos últimos 60 s). Cada item diz o que fazer; para o runner, a tela traz o comando pronto para copiar e some quando tudo está pronto. Na raiz do TeamFlow, no PowerShell (5.1 ou 7):
+
+```powershell
+./scripts/Setup-Runner.ps1 -OrganizationId <id-equipe> -ProjectId <id-projeto>   # uma vez por projeto
+./scripts/Start-TeamFlow.ps1                                                   # banco, API, web e runners
+```
+
+`Setup-Runner.ps1` não adivinha a política do runner: na primeira execução grava `apps/runner/work/local/<projeto>/policy.json` (com a imagem do sandbox de um runner já configurado) para você preencher arquivos legíveis/editáveis e o comando de teste; rode de novo e ele emite a credencial. Use `-PolicyPath` para um arquivo pronto ou `-CopyPolicyFrom <outro-projeto>` para reaproveitar uma política, revisando-a. `Start-TeamFlow.ps1` abre cada peça em sua janela, ignora o que já responde e inicia um runner por projeto configurado; `-DryRun` só mostra o plano, `-NoWeb`/`-NoRunners` omitem partes. Merge pelo app: ver "Publicação, aprovação e merge".
+
 ## Configurar um projeto
 
 1. Crie ou escolha equipe/projeto no TeamFlow. Use os IDs desse projeto, sem reutilizar a configuração de outra equipe.
@@ -39,7 +50,7 @@ Codex CLI não fornece embeddings nessa integração. O perfil cria índices tex
 
 O painel exibe um diff autorizado do projeto. Por compatibilidade, os contratos ainda usam `pullRequest`, `number=1` e `ciPassed`. No transporte local representam solicitação local por executionId e testes confirmados do runner; não são PR/CI do GitHub. Nunca apresentar isso como uma verificação externa.
 
-Outra pessoa da equipe aprova o head exato. Feedback cria nova execução com histórico portátil, repetição de testes e nova aprovação. O merge é feito por pessoa autorizada no terminal (`git merge --ff-only teamflow/<executionId>` na branch base), depois da revisão. Consulte novamente no painel: Done e memória candidata só aparecem após base/head/parent e aprovação serem confirmados. Apenas fast-forward exato é aceito atualmente; squash/rebase/outros merges exigem revalidação. Aprovar não faz merge automaticamente.
+Outra pessoa da equipe aprova o head exato. Feedback cria nova execução com histórico portátil, repetição de testes e nova aprovação. O merge é feito por pessoa autorizada no terminal (`git merge --ff-only teamflow/<executionId>` na branch base) ou, com `Local:EnableMerge=true` em `appsettings.Local.json` (padrão `false`, ADR 0009), pelo botão "Fazer merge agora" do painel, que só avança a base para o head já aprovado por outra pessoa e exige árvore rastreada limpa quando a base está em uso. Consulte novamente no painel: Done e memória candidata só aparecem após base/head/parent e aprovação serem confirmados. Apenas fast-forward exato é aceito atualmente; squash/rebase/outros merges exigem revalidação. Aprovar não faz merge automaticamente.
 
 Após merge, desconecte/reconecte a configuração com o novo commit base antes de agendar trabalho seguinte. Isso invalida snapshots antigos e evita usar uma base desatualizada. Não editar bases de execuções já existentes.
 

@@ -2,8 +2,11 @@
 
 API, frontend e runner são processos independentes. Ter Codex autenticado não inicia o consumidor da fila. `Queued` aguarda um runner; `Leased` com heartbeat indica trabalho recebido. Checkpoints e interações do modelo são as evidências de progresso.
 
-## Configurar e iniciar
+## Atalho: um comando por etapa
 
+`./scripts/Setup-Runner.ps1 -OrganizationId <uuid> -ProjectId <uuid>` prepara o runner de um projeto (política em `policy.json`, credencial DPAPI) e `./scripts/Start-TeamFlow.ps1` inicia banco, API, web e um runner por projeto configurado. Ambos funcionam no Windows PowerShell 5.1 e no 7. Detalhes em [local-development.md](local-development.md). O quadro indica se o runner está ativo (`GET .../runners/status`, visível a qualquer membro; online = consulta à fila nos últimos 60 s). Os passos abaixo são o roteiro manual equivalente.
+
+## Configurar e iniciar
 1. Compilar `apps/api/TeamFlow.Api.csproj` e `apps/runner/TeamFlow.Runner.csproj`.
 2. Salvar uma pasta local autorizada no projeto. Preparação da base segue ADR 0007.
 3. Preparar JSON com `policy` (arquivos readable/editable e comando test) e `sandbox` (imagem Docker por digest e limites). Usar `apps/runner/controller.example.json` apenas como exemplo, nunca como teste de uma aplicação diferente. Código e comandos do repositório não autorizam ferramentas.

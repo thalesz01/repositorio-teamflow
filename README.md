@@ -18,6 +18,9 @@ A visualização local e as fixtures não chamam modelos nem criam repositórios
 Production recusa inicialização até implementar sandbox VM/microVM e proteção de segredos aprovadas. Retenção inicial é PostgreSQL com leitura de relatórios limitada a 30 dias e retenção física indefinida; arquivamento de fontes é reversível. Nenhum purge automático foi autorizado/aplicado.
 
 
-## Modo local aceito em 2026-10-12
+## Início rápido local
 
+Com `.env` criado, Docker, Git e Codex instalados: `./scripts/Start-TeamFlow.ps1` inicia banco, API, web e os runners; o quadro de cada projeto mostra "Primeiros passos" até pasta, Codex e runner estarem prontos (ver [docs/local-development.md](docs/local-development.md)). O merge pode ser feito no app quando o operador liga `Local:EnableMerge` (ADR 0009).
+
+## Modo local aceito em 2026-10-12
 O fluxo utiliza Codex CLI e repositórios Git locais; siga docs/local-development.md e as ADRs 0005 e 0008 (caminhos relativos à raiz do monorepo). GitHub, OpenAI API e webhooks foram removidos. Configuração de Development por projeto, clone separado, revisão de diff e merge fast-forward confirmado. Embeddings externos não são necessários: existe indexação textual local.
