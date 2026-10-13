@@ -78,6 +78,16 @@ npm run test:e2e
 
 E2E_URL altera a URL do frontend; padrão http://localhost:13000. Os testes criam contas aleatórias e workspace local exclusivo; não apagam dados alheios. O cenário cobre cadastro, tarefa, edição, teclado, conflito provocado por outro cliente, agendamento, cancelamento e logout. Relatórios são ignorados no Git.
 
+## CI
+
+Há um workflow por aplicação em `.github/workflows` (`api.yml`, `runner.yml`, `web.yml`), cada um com filtro de caminhos e sem deploy conjunto. Eles reproduzem os comandos de `scripts/Test-App.ps1`: restore com lockfile, build, testes, `format --verify-no-changes`, EF sem alterações pendentes (API) e, no web, tipos gerados iguais ao contrato, typecheck, lint e build. O repositório ainda não tem remoto: os workflows só executam depois de publicado no GitHub. Playwright não roda no CI (exige API, banco e conta de fixtures).
+
+Limites conhecidos, para não confundir CI verde com cobertura total:
+
+- Três testes da API dependem de um `codex.exe` nativo (Windows, ADR 0005) e ficam fora do filtro do CI: `NativeCliReceivesStdinHasBoundedLifecycleAndDoesNotInventBillingAsync`, `LocalConfigurationChecksProjectAuthorityAndPinsCommittedBaseAsync` e `ConfirmedCliAnswerCanReplayAndRecoverWithUnknownBillingAsync`. Continuam obrigatórios na execução local com `scripts/Test-App.ps1 -App api`.
+- Os workflows usam Ubuntu com Docker para o sandbox Linux. Em 2026-10-13 os passos de build, format, EF e 70 testes da API foram reproduzidos num container Linux local; os testes que precisam de Docker (sandbox) e a suíte do runner não foram executados no Linux, então o primeiro run real do CI deve ser conferido.
+- As actions usam tags principais (`@v4`), não SHAs; fixar por SHA é um endurecimento pendente.
+
 ## Fronteiras de segurança
 
 - Sessão em cookie HttpOnly/SameSite Strict, oito horas, sem JWT no browser. Security stamp verificado a cada requisição; associação ao tenant consultada no banco.

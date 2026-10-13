@@ -1,0 +1,47 @@
+name: runner
+
+on:
+  pull_request:
+    paths:
+      - apps/runner/**
+      - tests/TeamFlow.Runner.Tests/**
+      - contracts/execution/**
+      - .github/workflows/runner.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/runner/**
+      - tests/TeamFlow.Runner.Tests/**
+      - contracts/execution/**
+      - .github/workflows/runner.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runner-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        # Resolve o global.json do runner, e não um SDK da raiz do monorepo.
+        working-directory: apps/runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: apps/runner/global.json
+      # O sandbox usa --pull never: a imagem fixada por digest precisa existir no host.
+      - name: Pull sandbox image
+        working-directory: .
+        run: docker pull "$(grep -oE 'alpine@sha256:[a-f0-9]{64}' apps/runner/DockerSandbox.cs | head -n 1)"
+      - run: dotnet restore . --locked-mode
+      - run: dotnet restore ../../tests/TeamFlow.Runner.Tests --locked-mode
+      - run: dotnet build . --no-restore
+      - run: dotnet test ../../tests/TeamFlow.Runner.Tests --no-restore
+      - run: dotnet format . --no-restore --verify-no-changes
+      - run: dotnet format ../../tests/TeamFlow.Runner.Tests --no-restore --verify-no-changes

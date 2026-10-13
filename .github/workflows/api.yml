@@ -1,0 +1,75 @@
+name: api
+
+# Checks da API. As suítes de integração compilam também o runner (ProjectReference nos testes),
+# por isso mudanças em apps/runner disparam este workflow.
+on:
+  pull_request:
+    paths:
+      - apps/api/**
+      - apps/runner/**
+      - tests/TeamFlow.Api.Tests/**
+      - tests/CodexCliFixture/**
+      - contracts/**
+      - .github/workflows/api.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/api/**
+      - apps/runner/**
+      - tests/TeamFlow.Api.Tests/**
+      - tests/CodexCliFixture/**
+      - contracts/**
+      - .github/workflows/api.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        # Mesma imagem de compose.yaml. A senha só existe neste banco descartável do job.
+        image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
+        env:
+          POSTGRES_PASSWORD: ci-throwaway-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      ConnectionStrings__Database: Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=ci-throwaway-password;Timeout=30
+      ASPNETCORE_ENVIRONMENT: Development
+    defaults:
+      run:
+        # Resolve o global.json da API, e não um SDK da raiz do monorepo.
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: apps/api/global.json
+      - name: Pull sandbox image used by integration tests
+        working-directory: .
+        run: docker pull "$(grep -oE 'alpine@sha256:[a-f0-9]{64}' apps/runner/DockerSandbox.cs | head -n 1)"
+      - run: dotnet tool restore
+      - run: dotnet restore . --locked-mode
+      - run: dotnet restore ../../tests/TeamFlow.Api.Tests --locked-mode
+      - run: dotnet build . --no-restore
+      # Os três testes excluídos dependem de um codex.exe nativo (Windows, ADR 0005) e rodam
+      # somente na máquina do piloto: ver "CI" em docs/development.md.
+      - name: Test
+        run: >-
+          dotnet test ../../tests/TeamFlow.Api.Tests --no-restore
+          --filter "FullyQualifiedName!~NativeCliReceivesStdinHasBoundedLifecycleAndDoesNotInventBillingAsync&FullyQualifiedName!~LocalConfigurationChecksProjectAuthorityAndPinsCommittedBaseAsync&FullyQualifiedName!~ConfirmedCliAnswerCanReplayAndRecoverWithUnknownBillingAsync"
+      - run: dotnet format . --no-restore --verify-no-changes
+      - run: dotnet format ../../tests/TeamFlow.Api.Tests --no-restore --verify-no-changes
+      - run: dotnet tool run dotnet-ef migrations has-pending-model-changes --no-build --project .
