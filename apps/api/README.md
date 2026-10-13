@@ -104,7 +104,7 @@ Aplicar a migração ExecutionCheckpoints. Escrita/leitura exigem Bearer técnic
 
 ## Progresso e publicação
 
-Progresso JSON/SSE e relatórios autorizados: [documentação](../../docs/execution-progress.md). Publicação automática opt-in e comando manual: [documentação](../../docs/pull-request-publication.md). Defina GitHub__EnablePublication=true somente para o projeto/instalação autorizado no servidor do piloto; a permissão afeta todas as execuções elegíveis das conexões configuradas nesse servidor. Padrão false; nenhum token write vai ao runner/browser. Polling de publicação usa leases e no máximo três tentativas. Webhooks/revisão/CI/merge estão implementados com processamento durável opt-in; veja docs/pull-request-review.md e docs/github-webhooks.md.
+Progresso JSON/SSE e relatórios autorizados: [documentação](../../docs/execution-progress.md). Publicação local opt-in e comando manual: [documentação](../../docs/pull-request-publication.md). Defina Local__EnablePublication=true somente na máquina do piloto; a permissão afeta todas as execuções elegíveis do servidor. Padrão false. Polling de publicação usa leases e no máximo três tentativas. Revisão independente e merge fast-forward confirmado: docs/pull-request-review.md.
 ## Validação integrada e piloto
 
 Consultar docs/pilot.md na raiz. O comando scripts/Test-App.ps1 -App api executa os checks desta aplicação; -Restore restaura dependências fixadas. O smoke com provedores reais depende de recursos e orçamento autorizados. Produção permanece bloqueada; Docker local não é a fronteira de produção multi-tenant.
@@ -112,4 +112,4 @@ Consultar docs/pilot.md na raiz. O comando scripts/Test-App.ps1 -App api executa
 
 ## Modo local aceito em 2026-10-12
 
-O fluxo principal utiliza Codex CLI e repositórios Git locais; siga docs/local-development.md e ADR 0005 (caminhos relativos à raiz do monorepo). As instruções anteriores de GitHub/OpenAI API descrevem integrações alternativas preservadas. Configuração de Development por projeto, clone separado, revisão de diff e merge fast-forward confirmado. Embeddings externos não são necessários: existe indexação textual local.
+O fluxo utiliza Codex CLI e repositórios Git locais; siga docs/local-development.md e as ADRs 0005 e 0008 (caminhos relativos à raiz do monorepo). GitHub, OpenAI API e webhooks foram removidos. Configuração de Development por projeto, clone separado, revisão de diff e merge fast-forward confirmado. Embeddings externos não são necessários: existe indexação textual local.

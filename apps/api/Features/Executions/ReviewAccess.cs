@@ -12,7 +12,7 @@ namespace TeamFlow.Api.Features.Executions;
 public sealed record ReviewStatus(string State, string? HeadCommit, bool CiPassed, Guid? ApprovedBy, string? MergeCommit);
 
 public sealed class ReviewAccess(AppDbContext db, TaskAccess tasks, RepositoryAccess repositories,
-    IGitReview git, IConfiguration configuration, TimeProvider clock, TeamFlow.Api.Features.Organizations.OrganizationAccess organizations, TeamFlow.Api.Features.Memory.MemoryAccess memory)
+    IConfiguration configuration, TimeProvider clock, TeamFlow.Api.Features.Organizations.OrganizationAccess organizations, TeamFlow.Api.Features.Memory.MemoryAccess memory)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -28,28 +28,21 @@ public sealed class ReviewAccess(AppDbContext db, TaskAccess tasks, RepositoryAc
     public async Task<ReviewStatus> ReconcileAsync(Guid id, Guid? approveBy, CancellationToken ct)
     {
         var execution = await RequireAsync(id, ct);
-        if (execution.PublicationState != "published" || execution.PullRequestNumber is not { } number || execution.PublishedHeadCommit is null)
+        if (execution.PublicationState != "published" || execution.PullRequestNumber is null || execution.PublishedHeadCommit is null)
             throw new ApiException(409, "publication_required", "A confirmed PR is required.");
         if (approveBy == execution.RequestedBy)
             throw new ApiException(409, "independent_review_required", "Another team member must review the execution.");
         if (execution.ReviewState == "merged") return Status(execution);
         var source = JsonSerializer.Deserialize<RepositorySnapshot>(execution.RepositorySnapshot ?? "null", JsonOptions)
             ?? throw new InvalidDataException("Missing repository snapshot.");
-        var local = source.LocalPath is not null;
-        if (!(local ? configuration.GetValue<bool>("Local:EnableReview") : configuration.GetValue<bool>("GitHub:EnableReview")))
+        if (!configuration.GetValue<bool>("Local:EnableReview"))
             throw new ApiException(503, "review_disabled", "Review is disabled.");
-        if (local && (execution.State != ExecutionState.Succeeded || execution.ResultCode != "tests_passed"))
-            throw new ApiException(409, "validation_required", "Local review requires successful runner tests.");
-        long appId = 0;
-        var prefix = $"Integrations:{execution.OrganizationId:D}:{execution.ProjectId:D}:GitHub:";
-        if (!local && (!long.TryParse(configuration[prefix + "CiAppId"], out appId) || appId < 1))
-            throw new ApiException(503, "ci_policy_required", "Configure a trusted CI App and required checks.");
-        var names = (configuration[prefix + "RequiredChecks"] ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (!local && names.Length is < 1 or > 20) throw new ApiException(503, "ci_policy_required", "Configure required CI checks.");
+        if (execution.State != ExecutionState.Succeeded || execution.ResultCode != "tests_passed")
+            throw new ApiException(409, "validation_required", "Review requires successful runner tests.");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
         var version = await tasks.ReviewVersionAsync(execution.OrganizationId, execution.ProjectId, execution.TaskId, ct);
-        var snapshot = await repositories.ReviewAsync(execution.OrganizationId, execution.ProjectId, source, number, new(appId, names), git, timeout.Token, execution.PublishedHeadCommit);
+        var snapshot = await repositories.ReviewAsync(execution.OrganizationId, execution.ProjectId, source, execution.PublishedHeadCommit, timeout.Token);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({execution.TaskId.ToString()}))", ct);
         var latestId = await db.Executions.Where(e => e.TaskId == execution.TaskId && e.OrganizationId == execution.OrganizationId && e.ProjectId == execution.ProjectId)
@@ -97,17 +90,6 @@ public sealed class ReviewAccess(AppDbContext db, TaskAccess tasks, RepositoryAc
             await memory.ExtractAsync(execution.OrganizationId, execution.ProjectId, id, execution.ReviewApprovedBy ?? execution.RequestedBy, ct);
         await transaction.CommitAsync(ct);
         return Status(execution);
-    }
-
-    public async Task<Guid[]> AffectedAsync(Guid organizationId, Guid projectId, Guid connectionId, long? number, string? head, bool baseChanged, CancellationToken ct)
-    {
-        if (number is null && head is null && !baseChanged) return [];
-        var executions = await db.Executions.AsNoTracking().Where(e => e.OrganizationId == organizationId && e.ProjectId == projectId
-            && e.PublicationState == "published" && (number == null || e.PullRequestNumber == number)
-            && (head == null || e.PublishedHeadCommit == head)).OrderByDescending(e => e.CreatedAt).Take(21).ToListAsync(ct);
-        if (executions.Count > 20) throw new ApiException(409, "review_scope_limit", "Delivery exceeds the supported review fan-out.");
-        return executions.Where(e => JsonSerializer.Deserialize<RepositorySnapshot>(e.RepositorySnapshot ?? "null", JsonOptions)?.ConnectionId == connectionId)
-            .Select(e => e.Id).ToArray();
     }
 
     private async Task<Execution> RequireAsync(Guid id, CancellationToken ct) =>

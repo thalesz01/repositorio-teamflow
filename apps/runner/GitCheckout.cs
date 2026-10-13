@@ -13,46 +13,41 @@ public interface IRepositoryCheckout
 
 public sealed partial class GitCheckout : IRepositoryCheckout
 {
+    // Only the authorized local folder is a valid source: there is no remote transport and no credential.
     public Task<CheckoutResult> PrepareAsync(ExecutionWorkspace workspace, CheckoutSource source, string token, CancellationToken ct)
     {
         if (!Commit().IsMatch(source.BaseCommit) || !Branch().IsMatch(source.Branch)) throw new ArgumentException("Invalid checkout commit or branch.");
-        if (source.LocalPath is not null)
-        {
-            if (token != "local" || !Path.IsPathFullyQualified(source.LocalPath) || source.RemoteUrl != source.LocalPath || !Directory.Exists(source.LocalPath))
-                throw new ArgumentException("Local checkout requires an authorized absolute path and pinned commit.");
-            for (DirectoryInfo? directory = new(source.LocalPath); directory is not null; directory = directory.Parent)
-                if (directory.LinkTarget is not null) throw new ArgumentException("Local checkout rejects linked directories.");
-            var git = Path.Combine(source.LocalPath, ".git");
-            if (!Directory.Exists(git) || new DirectoryInfo(git).LinkTarget is not null) throw new ArgumentException("A regular local Git repository is required.");
-            return PrepareCoreAsync(workspace, source, "", true, ct);
-        }
-        if (!Remote().IsMatch(source.RemoteUrl) || token.Length is < 8 or > 8192 || token.Any(char.IsWhiteSpace))
-            throw new ArgumentException("Checkout requires an authorized GitHub URL and temporary token.");
-        return PrepareCoreAsync(workspace, source, token, false, ct);
+        if (source.LocalPath is null || token != "local" || !Path.IsPathFullyQualified(source.LocalPath) || source.RemoteUrl != source.LocalPath || !Directory.Exists(source.LocalPath))
+            throw new ArgumentException("Checkout requires an authorized absolute local path and pinned commit.");
+        for (DirectoryInfo? directory = new(source.LocalPath); directory is not null; directory = directory.Parent)
+            if (directory.LinkTarget is not null) throw new ArgumentException("Local checkout rejects linked directories.");
+        var git = Path.Combine(source.LocalPath, ".git");
+        if (!Directory.Exists(git) || new DirectoryInfo(git).LinkTarget is not null) throw new ArgumentException("A regular local Git repository is required.");
+        return PrepareCoreAsync(workspace, source, ct);
     }
 
     internal Task<CheckoutResult> PrepareFixtureAsync(ExecutionWorkspace workspace, string fixture, string commit, Guid executionId, CancellationToken ct)
     {
         if (!Path.IsPathFullyQualified(fixture) || !Directory.Exists(fixture) || !Commit().IsMatch(commit)) throw new ArgumentException("Fixture repository and commit are required.");
-        return PrepareCoreAsync(workspace, new(fixture, commit, $"teamflow/{executionId:N}"), "", true, ct);
+        return PrepareCoreAsync(workspace, new(fixture, commit, $"teamflow/{executionId:N}"), ct);
     }
 
-    private static async Task<CheckoutResult> PrepareCoreAsync(ExecutionWorkspace workspace, CheckoutSource source, string token, bool localTransport, CancellationToken ct)
+    private static async Task<CheckoutResult> PrepareCoreAsync(ExecutionWorkspace workspace, CheckoutSource source, CancellationToken ct)
     {
         workspace.Resolve(".git");
         if (Directory.EnumerateFileSystemEntries(workspace.Path).Any()) throw new InvalidOperationException("Checkout requires a new empty workspace.");
         using var controller = new ExecutionWorkspace(Path.GetDirectoryName(workspace.Path) ?? throw new InvalidOperationException("Missing workspace root."));
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(120));
-        await RunAsync(workspace.Path, ["init", "--template=" + controller.Path, "."], controller.Path, "", localTransport, timeout.Token, source.RemoteUrl);
-        await RunAsync(workspace.Path, ["fetch", "--depth=1", "--no-tags", "--no-recurse-submodules", "--", source.RemoteUrl, source.BaseCommit], controller.Path, token, localTransport, timeout.Token, source.RemoteUrl);
-        await RunAsync(workspace.Path, ["checkout", "--no-recurse-submodules", "-b", source.Branch, "FETCH_HEAD"], controller.Path, "", localTransport, timeout.Token, source.RemoteUrl);
-        var actual = (await RunAsync(workspace.Path, ["rev-parse", "HEAD"], controller.Path, "", localTransport, timeout.Token, source.RemoteUrl)).Trim();
+        await RunAsync(workspace.Path, ["init", "--template=" + controller.Path, "."], controller.Path, timeout.Token, source.RemoteUrl);
+        await RunAsync(workspace.Path, ["fetch", "--depth=1", "--no-tags", "--no-recurse-submodules", "--", source.RemoteUrl, source.BaseCommit], controller.Path, timeout.Token, source.RemoteUrl);
+        await RunAsync(workspace.Path, ["checkout", "--no-recurse-submodules", "-b", source.Branch, "FETCH_HEAD"], controller.Path, timeout.Token, source.RemoteUrl);
+        var actual = (await RunAsync(workspace.Path, ["rev-parse", "HEAD"], controller.Path, timeout.Token, source.RemoteUrl)).Trim();
         if (actual != source.BaseCommit) throw new InvalidOperationException("Checked out commit differs from the execution snapshot.");
         return new(actual, source.Branch);
     }
 
-    private static async Task<string> RunAsync(string directory, string[] arguments, string hooksDirectory, string token, bool localTransport, CancellationToken ct, string authorizedSource)
+    private static async Task<string> RunAsync(string directory, string[] arguments, string hooksDirectory, CancellationToken ct, string authorizedSource)
     {
         ct.ThrowIfCancellationRequested();
         var start = new ProcessStartInfo("git") { WorkingDirectory = directory, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
@@ -62,7 +57,7 @@ public sealed partial class GitCheckout : IRepositoryCheckout
         start.Environment["GIT_CONFIG_NOSYSTEM"] = "1";
         start.Environment["GIT_CONFIG_GLOBAL"] = OperatingSystem.IsWindows() ? "NUL" : "/dev/null";
         start.Environment["GIT_TERMINAL_PROMPT"] = "0";
-        start.Environment["GIT_ALLOW_PROTOCOL"] = localTransport ? "file" : "https";
+        start.Environment["GIT_ALLOW_PROTOCOL"] = "file";
         var settings = new Dictionary<string, string>
         {
             ["core.hooksPath"] = hooksDirectory,
@@ -70,10 +65,8 @@ public sealed partial class GitCheckout : IRepositoryCheckout
             ["core.protectNTFS"] = "true",
             ["core.protectHFS"] = "true",
             ["credential.helper"] = "",
-            ["http.followRedirects"] = "false"
+            ["safe.directory"] = authorizedSource.Replace('\\', '/')
         };
-        if (localTransport) settings["safe.directory"] = authorizedSource.Replace('\\', '/');
-        if (token.Length > 0) settings["http.https://github.com/.extraheader"] = "AUTHORIZATION: basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("x-access-token:" + token));
         start.Environment["GIT_CONFIG_COUNT"] = settings.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var index = 0;
         foreach (var (key, value) in settings)
@@ -100,8 +93,6 @@ public sealed partial class GitCheckout : IRepositoryCheckout
         while ((count = await reader.ReadAsync(buffer)) > 0) output.Append(buffer, 0, Math.Min(count, 16384 - output.Length));
         return output.ToString();
     }
-    [GeneratedRegex(@"^https://github\.com/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}\.git\z", RegexOptions.CultureInvariant)]
-    private static partial Regex Remote();
     [GeneratedRegex(@"^[a-f0-9]{40}\z", RegexOptions.CultureInvariant)]
     private static partial Regex Commit();
     [GeneratedRegex(@"^teamflow/[a-f0-9]{32}\z", RegexOptions.CultureInvariant)]

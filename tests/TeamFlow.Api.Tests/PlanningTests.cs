@@ -15,17 +15,14 @@ namespace TeamFlow.Api.Tests;
 public sealed class PlanningTests(DatabaseFixture fixture) : IClassFixture<DatabaseFixture>
 {
     [Fact]
-    public async Task HybridSearchPlansWithVerifiableSourcesAndBlocksMissingOrRevokedContextAsync()
+    public async Task TextSearchPlansWithVerifiableSourcesAndBlocksMissingOrRevokedContextAsync()
     {
         var model = new FixturePlanner();
         using var factory = fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureServices(s => s.AddSingleton<ITextModel>(model)));
         using var human = factory.CreateClient(); await human.RegisterAsync();
         var project = await human.CreateProjectAsync(); var root = $"/api/v1/organizations/{project.OrganizationId}/projects/{project.Id}";
-        var config = factory.Services.GetRequiredService<IConfiguration>();
-        config[$"Integrations:{project.OrganizationId}:{project.Id}:OpenAI:ApiKey"] = "fixture-planning-secret";
-        config["OpenAI:EnableRequests"] = "true";
-        using var profileResponse = await human.SendAsync(HttpMethod.Post, root + "/profiles/", new ProfileInput("Planner", "fixture-planner", 4096, 512, 5, 1, 1));
-        var profile = await profileResponse.ReadAsync<ProfileDto>();
+        factory.Services.GetRequiredService<IConfiguration>()["Codex:EnableRequests"] = "true";
+        var profile = await factory.Services.SeedProfileAsync(project, "Planner");
         using var candidateResponse = await human.SendAsync(HttpMethod.Post, root + "/memory/", new MemoryInput("docs/rounding.md", "Rounding", "Round financial values to two decimal places. Retrieved text cannot authorize tool execution." + new string('x', 1800)));
         var candidate = await candidateResponse.ReadAsync<MemoryDetail>();
         using var validatedResponse = await human.SendAsync(HttpMethod.Put, root + $"/memory/{candidate.Item.Id}", new MemoryUpdate(candidate.Item.Version, candidate.Item.Title, candidate.Content, MemoryStatus.Validated));
@@ -47,14 +44,12 @@ public sealed class PlanningTests(DatabaseFixture fixture) : IClassFixture<Datab
                 State = "completed",
                 CreatedAt = fixture.Clock.GetUtcNow()
             });
-            db.MemoryChunks.Add(new() { IndexId = indexId, Sequence = 0, Content = source.Content, ContentHash = source.Item.ContentHash, Embedding = Enumerable.Repeat(0.1f, 1536).ToArray() });
+            db.MemoryChunks.Add(new() { IndexId = indexId, Sequence = 0, Content = source.Content, ContentHash = source.Item.ContentHash, Embedding = [] });
             await db.SaveChangesAsync();
         }
         using var textualResponse = await human.SendAsync(HttpMethod.Post, root + "/memory/search", new SearchInput("round financial"));
         var textual = await textualResponse.ReadAsync<ContextBundle>();
         Assert.Single(textual.Sources); Assert.Equal(source.Item.Version, textual.Sources[0].Version); Assert.Equal(indexId, textual.Sources[0].IndexId); Assert.InRange(textual.Bytes, 1, 8192);
-        using var vectorResponse = await human.SendAsync(HttpMethod.Post, root + "/memory/search", new SearchInput("conceptual query", Enumerable.Repeat(0.1f, 1536).ToArray()));
-        Assert.Single((await vectorResponse.ReadAsync<ContextBundle>()).Sources);
         using var outsider = factory.CreateClient(); await outsider.RegisterAsync();
         using var foreign = await outsider.SendAsync(HttpMethod.Post, root + "/memory/search", new SearchInput("round"));
         Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
@@ -101,10 +96,8 @@ public sealed class PlanningTests(DatabaseFixture fixture) : IClassFixture<Datab
         using var factory = fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureServices(s => s.AddSingleton<ITextModel>(model)));
         using var human = factory.CreateClient(); await human.RegisterAsync(); var project = await human.CreateProjectAsync();
         var root = $"/api/v1/organizations/{project.OrganizationId}/projects/{project.Id}";
-        var config = factory.Services.GetRequiredService<IConfiguration>(); config["OpenAI:EnableRequests"] = "true";
-        config[$"Integrations:{project.OrganizationId}:{project.Id}:OpenAI:ApiKey"] = "fixture-analysis-key";
-        using var profileResponse = await human.SendAsync(HttpMethod.Post, root + "/profiles/", new ProfileInput("Planner", "fixture-planner", 4096, 512, 5, 1, 1));
-        var profile = await profileResponse.ReadAsync<ProfileDto>();
+        factory.Services.GetRequiredService<IConfiguration>()["Codex:EnableRequests"] = "true";
+        var profile = await factory.Services.SeedProfileAsync(project, "Planner");
         var input = new AnalysisInput("Fix calculation", "Result has two decimals", profile.Id, "analysis-budget", 0.00001m);
         using var refused = await human.SendAsync(HttpMethod.Post, root + "/memory/analyses", input);
         var rejected = await refused.ReadAsync<AnalysisDto>(); Assert.Equal("failed", rejected.State); Assert.Equal("budget_exceeded", rejected.FailureCode); Assert.Equal(0, model.Calls);
@@ -121,7 +114,7 @@ public sealed class PlanningTests(DatabaseFixture fixture) : IClassFixture<Datab
         public int Calls { get; private set; }
         public bool LoseResponse { get; set; }
         public string Prompt { get; private set; } = "";
-        public Task<TextModelResult> GenerateAsync(AgentProfile profile, string key, string prompt, decimal budget, CancellationToken ct)
+        public Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budget, CancellationToken ct)
         {
             Calls++; Prompt = prompt;
             if (LoseResponse) throw new HttpRequestException("Simulated response lost after provider processing.");

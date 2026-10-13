@@ -11,8 +11,7 @@ using TeamFlow.Api.Http;
 
 namespace TeamFlow.Api.Features.Memory;
 
-public sealed class MemoryIndexAccess(AppDbContext db, MemoryAccess memory, ProjectAccess projects, ProfileAccess profiles,
-    IConfiguration configuration, TimeProvider clock)
+public sealed class MemoryIndexAccess(AppDbContext db, MemoryAccess memory, ProjectAccess projects, ProfileAccess profiles, TimeProvider clock)
 {
     public async Task<IndexDto> QueueAsync(Guid organizationId, Guid projectId, Guid itemId, IndexInput input, ClaimsPrincipal user, CancellationToken ct)
     {
@@ -32,12 +31,11 @@ public sealed class MemoryIndexAccess(AppDbContext db, MemoryAccess memory, Proj
         if (source.Version != input.Version) throw new ApiException(409, "memory_version_conflict", "Reload the source before indexing.");
         if (source.Status != MemoryStatus.Validated) throw new ApiException(409, "memory_not_validated", "Validate the source before indexing.");
         await profiles.RequireActiveAsync(organizationId, projectId, input.ProfileId, ct);
-        var textOnly = await profiles.IsLocalAsync(organizationId, projectId, input.ProfileId, ct);
         var job = new MemoryIndex
         {
             Id = Guid.NewGuid(),
-            Model = textOnly ? "text-only" : "text-embedding-3-small",
-            Dimensions = textOnly ? 0 : 1536,
+            Model = "text-only",
+            Dimensions = 0,
             OrganizationId = organizationId,
             ProjectId = projectId,
             ItemId = itemId,
@@ -69,7 +67,6 @@ public sealed class MemoryIndexAccess(AppDbContext db, MemoryAccess memory, Proj
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }
-        var called = false;
         try
         {
             var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, job.RequestedBy.ToString())], "memory-index"));
@@ -79,37 +76,23 @@ public sealed class MemoryIndexAccess(AppDbContext db, MemoryAccess memory, Proj
             MemoryAccess.ValidateContent(source.Title, source.Content);
             MemoryAccess.ValidateSource(source.Key, source.Kind);
             await profiles.RequireActiveAsync(job.OrganizationId, job.ProjectId, job.ProfileId, ct);
-            var price = configuration.GetValue<decimal>("Memory:EmbeddingUsdPerMillionTokens");
-            var textOnly = job.Model == "text-only";
-            if (!textOnly && (price <= 0 || !configuration.GetValue<bool>("Memory:EnableEmbeddingRequests") || !configuration.GetValue<bool>("OpenAI:EnableRequests")))
-                throw new ApiException(503, "provider_disabled", "Explicit enablement and embedding price are required.");
             var parts = Split(source.Content);
-            job.ReservedUsd = textOnly ? 0 : (Encoding.UTF8.GetByteCount(source.Content) + parts.Length * 1024m) * price / 1_000_000m;
-            if (job.ReservedUsd > job.MaxCostUsd) throw new ApiException(409, "budget_exceeded", "Embedding estimate exceeds the request budget.");
-            job.State = "calling";
-            await db.SaveChangesAsync(ct);
-            called = !textOnly;
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
-            var result = textOnly ? new EmbeddingResult(parts.Select(_ => Array.Empty<float>()).ToArray(), 0, 0)
-                : await profiles.EmbedAsync(job.OrganizationId, job.ProjectId, job.ProfileId, parts, price, linked.Token);
-            if (result.Vectors.Length != parts.Length || result.Vectors.Any(v => v.Length != job.Dimensions || v.Any(f => !float.IsFinite(f)) || (!textOnly && v.All(f => f == 0))))
-                throw new ApiException(502, "embedding_invalid_response", "Embedding dimensions could not be verified.");
-            job.InputTokens = result.InputTokens; job.EstimatedCostUsd = result.EstimatedCostUsd;
-            // Recheck authorization and live version after network I/O; derivatives never grant access.
-            await projects.RequireAsync(job.OrganizationId, job.ProjectId, user, linked.Token);
-            await profiles.RequireActiveAsync(job.OrganizationId, job.ProjectId, job.ProfileId, linked.Token);
-            var current = await db.MemoryItems.AsNoTracking().SingleAsync(m => m.Id == source.Id, linked.Token);
+            // Textual search needs no provider; vectors stay empty until an embedding provider exists.
+            job.ReservedUsd = 0;
+            job.InputTokens = 0; job.EstimatedCostUsd = 0;
+            // Recheck authorization and live version; derivatives never grant access.
+            await projects.RequireAsync(job.OrganizationId, job.ProjectId, user, ct);
+            var current = await db.MemoryItems.AsNoTracking().SingleAsync(m => m.Id == source.Id, ct);
             if (current.ArchivedAt != null || current.Version != job.SourceVersion || current.Status != MemoryStatus.Validated)
                 throw new ApiException(409, "index_source_changed", "Source changed during indexing.");
-            for (var i = 0; i < parts.Length; i++) db.MemoryChunks.Add(new() { IndexId = job.Id, Sequence = i, Content = parts[i], ContentHash = Hash(parts[i]), Embedding = result.Vectors[i] });
+            for (var i = 0; i < parts.Length; i++) db.MemoryChunks.Add(new() { IndexId = job.Id, Sequence = i, Content = parts[i], ContentHash = Hash(parts[i]), Embedding = [] });
             job.State = "completed"; job.CompletedAt = clock.GetUtcNow();
-            await db.SaveChangesAsync(linked.Token);
+            await db.SaveChangesAsync(ct);
         }
-        catch (Exception error) when (error is ApiException or HttpRequestException or OperationCanceledException)
+        catch (Exception error) when (error is ApiException or OperationCanceledException)
         {
-            job.State = called ? "uncertain" : "failed";
-            job.FailureCode = error is ApiException api ? api.Code : "embedding_unavailable";
+            job.State = "failed";
+            job.FailureCode = error is ApiException api ? api.Code : "index_interrupted";
             using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             await db.SaveChangesAsync(cleanup.Token);
         }

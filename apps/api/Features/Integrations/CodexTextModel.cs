@@ -4,10 +4,18 @@ using TeamFlow.Api.Http;
 
 namespace TeamFlow.Api.Features.Integrations;
 
+public sealed record TextModelResult(string Text, int? InputTokens, int? OutputTokens, decimal? EstimatedCostUsd);
+
+// AI provider boundary: Codex CLI is the only implementation; tests replace it with a double.
+public interface ITextModel
+{
+    Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budgetUsd, CancellationToken ct);
+}
+
 // Codex provides text decisions; the existing harness remains responsible for writes and tests.
 public sealed class CodexTextModel(IConfiguration configuration) : ITextModel
 {
-    public async Task<TextModelResult> GenerateAsync(AgentProfile profile, string apiKey, string prompt, decimal budgetUsd, CancellationToken ct)
+    public async Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budgetUsd, CancellationToken ct)
     {
         if (!configuration.GetValue<bool>("Codex:EnableRequests"))
             throw new ApiException(503, "provider_disabled", "Codex CLI execution is disabled.");

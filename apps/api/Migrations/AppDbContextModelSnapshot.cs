@@ -481,16 +481,12 @@ namespace TeamFlow.Api.Migrations
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("ProtectedApiKey")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<string>("Provider")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)")
-                        .HasDefaultValue("openai");
+                        .HasDefaultValue("codex");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamp with time zone");
@@ -511,9 +507,6 @@ namespace TeamFlow.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<long>("AppId")
-                        .HasColumnType("bigint");
-
                     b.Property<string>("BaseBranch")
                         .IsRequired()
                         .HasMaxLength(120)
@@ -524,9 +517,6 @@ namespace TeamFlow.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
-                    b.Property<long>("InstallationId")
-                        .HasColumnType("bigint");
-
                     b.Property<string>("LocalPath")
                         .IsRequired()
                         .HasMaxLength(1024)
@@ -535,29 +525,15 @@ namespace TeamFlow.Api.Migrations
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Owner")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
-
-                    b.Property<string>("ProtectedPrivateKey")
-                        .IsRequired()
-                        .HasColumnType("text");
 
                     b.Property<string>("Provider")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)")
-                        .HasDefaultValue("github");
-
-                    b.Property<string>("Repository")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasDefaultValue("local");
 
                     b.Property<long>("RepositoryId")
                         .HasColumnType("bigint");
@@ -571,6 +547,8 @@ namespace TeamFlow.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasAlternateKey("Id", "OrganizationId", "ProjectId");
+
                     b.HasIndex("OrganizationId", "ProjectId")
                         .IsUnique()
                         .HasFilter("\"RevokedAt\" IS NULL");
@@ -578,71 +556,6 @@ namespace TeamFlow.Api.Migrations
                     b.HasIndex("ProjectId", "OrganizationId");
 
                     b.ToTable("GitConnections");
-                });
-
-            modelBuilder.Entity("TeamFlow.Api.Features.Integrations.GitHubDelivery", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Attempts")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
-                    b.Property<Guid>("ConnectionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("DeliveryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Event")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<string>("FailureCode")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<Guid?>("Lease")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset?>("LeaseUntil")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Payload")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<string>("PayloadHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("ReceivedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("State")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ConnectionId", "DeliveryId")
-                        .IsUnique();
-
-                    b.HasIndex("ConnectionId", "OrganizationId", "ProjectId");
-
-                    b.ToTable("GitHubDeliveries");
                 });
 
             modelBuilder.Entity("TeamFlow.Api.Features.Memory.DemandAnalysis", b =>
@@ -1228,16 +1141,6 @@ namespace TeamFlow.Api.Migrations
                         .WithMany()
                         .HasForeignKey("ProjectId", "OrganizationId")
                         .HasPrincipalKey("Id", "OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("TeamFlow.Api.Features.Integrations.GitHubDelivery", b =>
-                {
-                    b.HasOne("TeamFlow.Api.Features.Integrations.GitConnection", null)
-                        .WithMany()
-                        .HasForeignKey("ConnectionId", "OrganizationId", "ProjectId")
-                        .HasPrincipalKey("Id", "OrganizationId", "ProjectId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

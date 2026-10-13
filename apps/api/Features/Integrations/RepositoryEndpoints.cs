@@ -51,39 +51,6 @@ public static class RepositoryEndpoints
             await db.SaveChangesAsync(ct);
             return Results.Ok(ToDto(connection));
         }).Produces<GitDto>();
-        group.MapPost("/", async (Guid organizationId, Guid projectId, GitInput input, ClaimsPrincipal user,
-            ProjectAccess access, AppDbContext db, IntegrationSecrets secrets, IGitProvider git, CancellationToken ct) =>
-        {
-            await access.RequireAsync(organizationId, projectId, user, ct, owner: true);
-            GitRules.Validate(input);
-            if (!long.TryParse(secrets.Configured(organizationId, projectId, "GitHub:AppId"), out var appId) || appId <= 0
-                || !long.TryParse(secrets.Configured(organizationId, projectId, "GitHub:InstallationId"), out var installationId)
-                || !long.TryParse(secrets.Configured(organizationId, projectId, "GitHub:RepositoryId"), out var repositoryId))
-                throw new ApiException(503, "git_invalid_configuration", "GitHub App configuration is invalid.");
-            if (input.InstallationId != installationId || input.RepositoryId != repositoryId)
-                throw new ApiException(403, "repository_not_authorized", "Repository is outside the server-authorized project scope.");
-            if (await db.GitConnections.AnyAsync(g => g.OrganizationId == organizationId && g.ProjectId == projectId && g.RevokedAt == null, ct))
-                throw new ApiException(409, "repository_connected", "Revoke the existing connection before replacing it.");
-            var key = secrets.Configured(organizationId, projectId, "GitHub:PrivateKeyPem");
-            var connection = new GitConnection
-            {
-                Id = Guid.NewGuid(),
-                OrganizationId = organizationId,
-                ProjectId = projectId,
-                AppId = appId,
-                InstallationId = input.InstallationId,
-                RepositoryId = input.RepositoryId,
-                Owner = input.Owner,
-                Repository = input.Repository,
-                BaseBranch = input.BaseBranch,
-                Version = Guid.NewGuid()
-            };
-            connection.ProtectedPrivateKey = secrets.Protect(organizationId, projectId, connection.Id, "github", key);
-            connection.BaseCommit = await git.VerifyAsync(connection, key, ct);
-            db.GitConnections.Add(connection);
-            await db.SaveChangesAsync(ct);
-            return Results.Ok(ToDto(connection));
-        }).Produces<GitDto>();
         group.MapPost("/local", async (Guid organizationId, Guid projectId, LocalRepositoryInput input, ClaimsPrincipal user,
             ProjectAccess access, AppDbContext db, LocalRepository local, CancellationToken ct) =>
         {
@@ -121,12 +88,12 @@ public static class RepositoryEndpoints
             await access.RequireAsync(organizationId, projectId, user, ct, owner: true);
             await db.GitConnections.Where(g => g.OrganizationId == organizationId && g.ProjectId == projectId && g.RevokedAt == null)
                 .ExecuteUpdateAsync(set => set.SetProperty(g => g.RevokedAt, clock.GetUtcNow())
-                    .SetProperty(g => g.Version, Guid.NewGuid()).SetProperty(g => g.ProtectedPrivateKey, ""), ct);
+                    .SetProperty(g => g.Version, Guid.NewGuid()), ct);
             return Results.NoContent();
         });
         routes.MapPost("/internal/v1/executions/{id:guid}/repository-token", async (Guid id, RepositoryTokenInput input,
             ClaimsPrincipal user, RepositoryAccess access, CancellationToken ct) =>
-            Results.Ok(await access.CheckoutTokenAsync(id, input.LeaseToken, user, ct)))
-            .RequireAuthorization("runner").RequireRateLimiting("runner").Produces<InstallationToken>().WithTags("Runner protocol");
+            Results.Ok(await access.CheckoutGrantAsync(id, input.LeaseToken, user, ct)))
+            .RequireAuthorization("runner").RequireRateLimiting("runner").Produces<CheckoutGrant>().WithTags("Runner protocol");
     }
 }

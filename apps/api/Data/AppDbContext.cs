@@ -26,7 +26,6 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<ExecutionCheckpoint> ExecutionCheckpoints => Set<ExecutionCheckpoint>();
     public DbSet<ModelTurn> ModelTurns => Set<ModelTurn>();
     public DbSet<RunnerCredential> RunnerCredentials => Set<RunnerCredential>();
-    public DbSet<GitHubDelivery> GitHubDeliveries => Set<GitHubDelivery>();
     public DbSet<GitConnection> GitConnections => Set<GitConnection>();
     public DbSet<AgentProfile> AgentProfiles => Set<AgentProfile>();
 
@@ -88,16 +87,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         model.Entity<MemoryRevision>().Property(r => r.Title).HasMaxLength(160);
         model.Entity<MemoryRevision>().Property(r => r.ContentHash).HasMaxLength(64);
         model.Entity<MemoryRevision>().Property(r => r.Status).HasConversion<string>().HasMaxLength(16);
-        model.Entity<GitHubDelivery>().HasIndex(d => new { d.ConnectionId, d.DeliveryId }).IsUnique();
         model.Entity<GitConnection>().HasAlternateKey(g => new { g.Id, g.OrganizationId, g.ProjectId });
-        model.Entity<GitHubDelivery>().HasOne<GitConnection>().WithMany().HasForeignKey(d => new { d.ConnectionId, d.OrganizationId, d.ProjectId })
-            .HasPrincipalKey(g => new { g.Id, g.OrganizationId, g.ProjectId }).OnDelete(DeleteBehavior.Restrict);
-        model.Entity<GitHubDelivery>().Property(d => d.Event).HasMaxLength(32);
-        model.Entity<GitHubDelivery>().Property(d => d.PayloadHash).HasMaxLength(64);
-        model.Entity<GitHubDelivery>().Property(d => d.Payload).HasColumnType("jsonb");
-        model.Entity<GitHubDelivery>().Property(d => d.Attempts).HasDefaultValue(0);
-        model.Entity<GitHubDelivery>().Property(d => d.FailureCode).HasMaxLength(64);
-        model.Entity<GitHubDelivery>().Property(d => d.State).HasMaxLength(16);
         model.Entity<ModelTurn>().HasKey(t => new { t.ExecutionId, t.OperationId });
         model.Entity<ModelTurn>().HasIndex(t => new { t.ExecutionId, t.Attempt, t.Sequence }).IsUnique();
         model.Entity<ModelTurn>().HasOne<Execution>().WithMany().HasForeignKey(t => new { t.ExecutionId, t.OrganizationId, t.ProjectId })
@@ -106,8 +96,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         model.Entity<ModelTurn>().Property(t => t.EstimatedCostUsd).HasPrecision(20, 12);
         model.Entity<ModelTurn>().Property(t => t.RequestHash).HasMaxLength(64);
         model.Entity<ModelTurn>().Property(t => t.BillingMode).HasMaxLength(8).HasDefaultValue("api");
-        model.Entity<AgentProfile>().Property(p => p.Provider).HasMaxLength(16).HasDefaultValue("openai");
-        model.Entity<GitConnection>().Property(g => g.Provider).HasMaxLength(16).HasDefaultValue("github");
+        model.Entity<AgentProfile>().Property(p => p.Provider).HasMaxLength(16).HasDefaultValue("codex");
+        model.Entity<GitConnection>().Property(g => g.Provider).HasMaxLength(16).HasDefaultValue("local");
         model.Entity<GitConnection>().Property(g => g.LocalPath).HasMaxLength(1024);
         model.Entity<ModelTurn>().Property(t => t.State).HasMaxLength(16);
         model.Entity<ModelTurn>().Property(t => t.Action).HasColumnType("jsonb");
@@ -134,8 +124,6 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         model.Entity<GitConnection>().HasOne<Project>().WithMany().HasForeignKey(g => new { g.ProjectId, g.OrganizationId })
             .HasPrincipalKey(p => new { p.Id, p.OrganizationId }).OnDelete(DeleteBehavior.Restrict);
         model.Entity<GitConnection>().HasIndex(g => new { g.OrganizationId, g.ProjectId }).IsUnique().HasFilter("\"RevokedAt\" IS NULL");
-        model.Entity<GitConnection>().Property(g => g.Owner).HasMaxLength(100);
-        model.Entity<GitConnection>().Property(g => g.Repository).HasMaxLength(100);
         model.Entity<GitConnection>().Property(g => g.BaseBranch).HasMaxLength(120);
         model.Entity<GitConnection>().Property(g => g.BaseCommit).HasMaxLength(40);
         model.Entity<GitConnection>().Property(g => g.Version).IsConcurrencyToken();

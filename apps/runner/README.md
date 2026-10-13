@@ -56,6 +56,6 @@ Consultar docs/pilot.md na raiz. O comando scripts/Test-App.ps1 -App runner exec
 
 ## Modo local aceito em 2026-10-12
 
-O fluxo principal utiliza Codex CLI e repositórios Git locais; siga docs/local-development.md e ADR 0005 (caminhos relativos à raiz do monorepo). As instruções anteriores de GitHub/OpenAI API descrevem integrações alternativas preservadas. Configuração de Development por projeto, clone separado, revisão de diff e merge fast-forward confirmado. Embeddings externos não são necessários: existe indexação textual local.
+O fluxo utiliza Codex CLI e repositórios Git locais; siga docs/local-development.md e as ADRs 0005 e 0008 (caminhos relativos à raiz do monorepo). O checkout aceita somente a pasta local autorizada. Configuração de Development por projeto, clone separado, revisão de diff e merge fast-forward confirmado. Embeddings externos não são necessários: existe indexação textual local.
 
 Operação local com credencial protegida e comandos de início: [docs/runner-local.md](../../docs/runner-local.md).

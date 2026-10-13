@@ -14,20 +14,15 @@ public sealed class PublicationWorker(IServiceScopeFactory scopes, IConfiguratio
         {
             try
             {
-                if (configuration.GetValue<bool>("GitHub:EnablePublication") || configuration.GetValue<bool>("Local:EnablePublication"))
+                if (configuration.GetValue<bool>("Local:EnablePublication"))
                 {
                     using var scope = scopes.CreateScope();
                     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                     var now = clock.GetUtcNow();
-                    var candidates = await db.Executions.AsNoTracking().Where(e => e.State == ExecutionState.Succeeded
+                    var id = await db.Executions.AsNoTracking().Where(e => e.State == ExecutionState.Succeeded
                         && e.ResultCode == "tests_passed" && e.PublicationState != "published" && e.PublicationAttempts < 3
                         && (e.PublicationLeaseUntil == null || e.PublicationLeaseUntil <= now))
-                                                .OrderBy(e => e.CreatedAt).Select(e => new { e.Id, e.RepositorySnapshot }).Take(100).ToListAsync(stoppingToken);
-                    var id = candidates.Where(e =>
-                    {
-                        var source = e.RepositorySnapshot is null ? null : System.Text.Json.JsonSerializer.Deserialize<TeamFlow.Api.Features.Integrations.RepositorySnapshot>(e.RepositorySnapshot, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
-                        return configuration.GetValue<bool>(source?.LocalPath is not null ? "Local:EnablePublication" : "GitHub:EnablePublication");
-                    }).Select(e => (Guid?)e.Id).FirstOrDefault();
+                        .OrderBy(e => e.CreatedAt).Select(e => (Guid?)e.Id).FirstOrDefaultAsync(stoppingToken);
                     if (id is { } executionId)
                     {
                         try { await scope.ServiceProvider.GetRequiredService<PublicationAccess>().PublishAsync(executionId, stoppingToken); }

@@ -32,17 +32,18 @@ public sealed class GitCheckoutTests
     }
 
     [Fact]
-    public async Task CheckoutRejectsUnsafeUrlsAndInvalidCommitsBeforeNetworkAsync()
+    public async Task CheckoutRejectsRemoteSourcesAndInvalidCommitsBeforeAnyGitCommandAsync()
     {
         using var workspace = new ExecutionWorkspace(Root);
         var checkout = new GitCheckout();
         var source = new CheckoutSource("https://github.com/owner/repo.git", new string('a', 40), $"teamflow/{Guid.NewGuid():N}");
-        foreach (var url in new[] { "file:///etc/passwd", "https://github.com.evil.test/owner/repo.git", "https://token@github.com/owner/repo.git", "ssh://github.com/owner/repo.git" })
-            await Assert.ThrowsAsync<ArgumentException>(() => checkout.PrepareAsync(workspace, source with { RemoteUrl = url }, "fixture-token", CancellationToken.None));
-        await Assert.ThrowsAsync<ArgumentException>(() => checkout.PrepareAsync(workspace, source with { BaseCommit = "--upload-pack=evil" }, "fixture-token", CancellationToken.None));
-        using var cancelled = new CancellationTokenSource();
-        cancelled.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => checkout.PrepareAsync(workspace, source, "fixture-token", cancelled.Token));
+        // Remote URLs are not a supported transport, with or without a grant.
+        foreach (var url in new[] { "file:///etc/passwd", "https://github.com/owner/repo.git", "ssh://github.com/owner/repo.git" })
+        {
+            await Assert.ThrowsAsync<ArgumentException>(() => checkout.PrepareAsync(workspace, source with { RemoteUrl = url }, "local", CancellationToken.None));
+            await Assert.ThrowsAsync<ArgumentException>(() => checkout.PrepareAsync(workspace, source with { RemoteUrl = url, LocalPath = url }, "local", CancellationToken.None));
+        }
+        await Assert.ThrowsAsync<ArgumentException>(() => checkout.PrepareAsync(workspace, source with { BaseCommit = "--upload-pack=evil" }, "local", CancellationToken.None));
         Assert.Empty(Directory.EnumerateFileSystemEntries(workspace.Path));
     }
 

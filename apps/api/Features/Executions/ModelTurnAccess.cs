@@ -16,8 +16,8 @@ public sealed class ModelTurnAccess(AppDbContext db, LeaseAccess leases, Profile
 
     public async Task<ModelTurnReply> GenerateAsync(Guid id, ModelTurnInput input, ClaimsPrincipal user, CancellationToken ct)
     {
-        if (!configuration.GetValue<bool>("OpenAI:EnableRequests") && !configuration.GetValue<bool>("Codex:EnableRequests"))
-            throw new ApiException(503, "provider_disabled", "External model calls are disabled on this server.");
+        if (!configuration.GetValue<bool>("Codex:EnableRequests"))
+            throw new ApiException(503, "provider_disabled", "Codex model calls are disabled on this server.");
         if (input.OperationId == Guid.Empty || input.Sequence < 0 || input.Policy is null
             || input.Policy.Readable is null || input.Policy.Editable is null
             || input.Policy.Readable.Length > 100 || input.Policy.Editable.Length > 100
@@ -27,16 +27,12 @@ public sealed class ModelTurnAccess(AppDbContext db, LeaseAccess leases, Profile
         ModelTurn turn;
         string prompt;
         Execution execution;
-        bool local;
         await using (var transaction = await db.Database.BeginTransactionAsync(ct))
         {
             execution = await leases.LockAsync(id, input.LeaseToken, user, ct);
             await VerifyMemoryAsync(execution, ct);
             if (execution.AgentProfileId is not { } profileId)
                 throw new ApiException(409, "profile_required", "Execution requires a model profile.");
-            local = await profiles.IsLocalAsync(execution.OrganizationId, execution.ProjectId, profileId, ct);
-            if (!(local ? configuration.GetValue<bool>("Codex:EnableRequests") : configuration.GetValue<bool>("OpenAI:EnableRequests")))
-                throw new ApiException(503, "provider_disabled", "The selected model transport is disabled.");
             var checkpoint = await db.ExecutionCheckpoints.AsNoTracking().SingleOrDefaultAsync(c => c.ExecutionId == id
                 && c.Attempt == execution.Attempt && c.Sequence == input.Sequence
                 && c.OrganizationId == execution.OrganizationId && c.ProjectId == execution.ProjectId, ct)
@@ -92,7 +88,7 @@ public sealed class ModelTurnAccess(AppDbContext db, LeaseAccess leases, Profile
                 Attempt = execution.Attempt,
                 Sequence = input.Sequence,
                 RequestHash = hash,
-                BillingMode = local ? "cli" : "api",
+                BillingMode = "cli",
                 ReservedUsd = reserved
             };
             db.ModelTurns.Add(turn);
@@ -128,7 +124,6 @@ public sealed class ModelTurnAccess(AppDbContext db, LeaseAccess leases, Profile
             turn.EstimatedCostUsd = generated.EstimatedCostUsd;
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
-            if (!local && generated.EstimatedCostUsd is null) throw Uncertain();
             var total = await db.ModelTurns.Where(t => t.ExecutionId == id).SumAsync(t => t.EstimatedCostUsd ?? t.ReservedUsd, ct);
             if (total > execution.MaxCostUsd) throw new ApiException(409, "budget_exceeded", "Reported model cost exceeds the execution budget.");
             return Reply(turn);

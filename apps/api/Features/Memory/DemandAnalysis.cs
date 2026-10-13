@@ -22,7 +22,7 @@ public sealed class DemandAnalysis
 }
 
 public sealed record AnalysisInput(string Demand, string? ExpectedBehavior, Guid ProfileId, string IdempotencyKey,
-    decimal MaxCostUsd = 1, bool Semantic = false);
+    decimal MaxCostUsd = 1);
 public sealed record PlanDraft(string Title, string Description, string[] AcceptanceCriteria, string[] Questions);
 public sealed record AnalysisDto(Guid Id, string State, string? FailureCode, PlanDraft? Plan, ContextBundle? Context,
     decimal MaxCostUsd, decimal ReservedUsd, decimal? EstimatedCostUsd, int? InputTokens, int? OutputTokens, DateTimeOffset CreatedAt);

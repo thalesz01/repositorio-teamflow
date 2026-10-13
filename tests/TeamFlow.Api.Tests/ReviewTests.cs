@@ -12,6 +12,7 @@ using TeamFlow.Api.Data;
 using TeamFlow.Api.Features.Executions;
 using TeamFlow.Api.Features.Integrations;
 using TeamFlow.Api.Features.Organizations;
+using TeamFlow.Api.Features.Projects;
 using TeamFlow.Api.Features.Tasks;
 using Xunit;
 
@@ -37,7 +38,7 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
             var item = Assert.Single(await memoryScope.ServiceProvider.GetRequiredService<AppDbContext>().MemoryItems.Where(m => m.TaskId == setup.TaskId).ToListAsync());
             Assert.Equal(TeamFlow.Api.Features.Memory.MemoryStatus.Candidate, item.Status);
             Assert.Equal(new string('d', 40), item.Commit);
-            Assert.Equal("https://github.com/fixture/repo/pull/7", item.PullRequestUrl);
+            Assert.Contains("/repository/local/reviews/", item.PullRequestUrl);
         }
         setup.Provider.Snapshot = setup.Provider.Snapshot with { Merged = false, CiPassed = false };
         using var replay = await setup.Author.SendAsync(HttpMethod.Post, setup.Path + "/refresh", new { });
@@ -46,7 +47,7 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
     }
 
     [Fact]
-    public async Task HeadOrBaseChangesInvalidateApprovalAndUnknownPolicyCannotApproveAsync()
+    public async Task HeadOrBaseChangesInvalidateApprovalAndUnverifiedHeadCannotApproveAsync()
     {
         using var setup = await SetupAsync();
         setup.Provider.Snapshot = setup.Provider.Snapshot with { CiPassed = false };
@@ -64,9 +65,6 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
         setup.Provider.Snapshot = setup.Provider.Snapshot with { BaseCommit = new string('a', 40), HeadCommit = new string('c', 40) };
         using var changedHead = await setup.Author.SendAsync(HttpMethod.Post, setup.Path + "/refresh", new { });
         Assert.Equal("revalidation_required", (await changedHead.ReadAsync<ReviewStatus>()).State);
-        setup.Factory.Services.GetRequiredService<IConfiguration>()[setup.ConfigPrefix + "RequiredChecks"] = "";
-        using var missing = await setup.Reviewer.SendAsync(HttpMethod.Post, setup.Path + "/approve", new { });
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, missing.StatusCode);
     }
 
     [Fact]
@@ -91,9 +89,7 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
         using var current = await setup.Author.GetAsync(taskPath);
         var task = await current.ReadAsync<TaskDto>();
         var parentId = Guid.Parse(setup.Path.Split('/')[^2]);
-        using var profileResponse = await setup.Author.SendAsync(HttpMethod.Post, taskPath[..taskPath.IndexOf("/tasks/", StringComparison.Ordinal)] + "/profiles/",
-            new ProfileInput("Replacement agent", "fixture-replacement", 65536, 128, 5, 1, 1));
-        var replacement = await profileResponse.ReadAsync<ProfileDto>();
+        var replacement = await setup.Factory.Services.SeedProfileAsync(setup.Project, "Replacement agent");
         var input = new ExecutionInput(task.Version, AgentProfileId: replacement.Id, ParentExecutionId: parentId, Feedback: "Add the negative-value case.");
         var key = Guid.NewGuid().ToString();
         using var created = await setup.Reviewer.SendAsync(HttpMethod.Post, taskPath + "/executions/", input, key);
@@ -123,46 +119,7 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
     }
 
     [Fact]
-    public async Task DurableWebhookReconcilesCurrentGitStateAndReplaysWithoutRegressingAsync()
-    {
-        using var setup = await SetupAsync();
-        using var approved = await setup.Reviewer.SendAsync(HttpMethod.Post, setup.Path + "/approve", new { });
-        approved.EnsureSuccessStatusCode();
-        setup.Provider.Snapshot = setup.Provider.Snapshot with { Merged = true, MergeCommit = new string('d', 40), MergeBaseParent = new string('a', 40) };
-        Guid deliveryId;
-        using (var scope = setup.Factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var connection = await db.GitConnections.SingleAsync(g => g.OrganizationId ==
-                db.WorkItems.Where(t => t.Id == setup.TaskId).Select(t => t.OrganizationId).First());
-            deliveryId = Guid.NewGuid();
-            db.GitHubDeliveries.Add(new()
-            {
-                Id = deliveryId,
-                ConnectionId = connection.Id,
-                OrganizationId = connection.OrganizationId,
-                ProjectId = connection.ProjectId,
-                DeliveryId = Guid.NewGuid(),
-                Event = "pull_request",
-                PayloadHash = new string('a', 64),
-                Payload = "{\"pull_request\":{\"number\":7}}",
-                ReceivedAt = fixture.Clock.GetUtcNow()
-            });
-            await db.SaveChangesAsync();
-            Assert.True(await scope.ServiceProvider.GetRequiredService<WebhookProcessor>().ProcessOneAsync(default));
-        }
-        Assert.Equal(TaskStage.Done, await StageAsync(setup));
-        using (var scope = setup.Factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var delivery = await db.GitHubDeliveries.SingleAsync(d => d.Id == deliveryId);
-            Assert.Equal("processed", delivery.State);
-            Assert.Equal(1, delivery.Attempts);
-            Assert.False(await scope.ServiceProvider.GetRequiredService<WebhookProcessor>().ProcessOneAsync(default));
-        }
-    }
-    [Fact]
-    public async Task DelayedGitQueryCannotOverwriteNewerCiStateAsync()
+    public async Task DelayedGitQueryCannotOverwriteNewerVerificationStateAsync()
     {
         using var setup = await SetupAsync();
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -193,7 +150,7 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
     [Fact]
     public async Task LocalReviewUsesNativeGitAndRequiresApprovalBeforeConfirmedFastForwardAsync()
     {
-        using var setup = await SetupAsync();
+        using var setup = await SetupAsync(realGit: true);
         using var workspace = new TeamFlow.Runner.ExecutionWorkspace(Path.GetFullPath(Path.Combine("work", "local-review")));
         await GitAsync(["init", "-b", "main"]);
         await GitAsync(["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "--allow-empty", "-m", "Base"]);
@@ -207,7 +164,6 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
             connection.Provider = "local"; connection.LocalPath = workspace.Path; connection.BaseCommit = baseline;
             var config = setup.Factory.Services.GetRequiredService<IConfiguration>();
             config[$"Integrations:{connection.OrganizationId:D}:{connection.ProjectId:D}:Local:RepositoryPath"] = workspace.Path;
-            config["Local:EnableReview"] = "true"; config["GitHub:EnableReview"] = "false";
             var content = "42"; var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
             var plan = new PublicationPlan(execution.Id, baseline, original.Branch, "Local fixture", "Verified fixture tests", execution.CreatedAt, [new("answer.txt", content, hash)]);
             var publication = await scope.ServiceProvider.GetRequiredService<LocalGit>().PublishAsync(connection, plan, CancellationToken.None);
@@ -245,31 +201,25 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
         return (await scope.ServiceProvider.GetRequiredService<AppDbContext>().WorkItems.SingleAsync(t => t.Id == setup.TaskId)).Stage;
     }
 
-    private async Task<Scenario> SetupAsync()
+    // realGit keeps the native Git review; otherwise the explicit double supplies the head, base and merge facts.
+    private async Task<Scenario> SetupAsync(bool realGit = false)
     {
         var provider = new FixtureReview();
         var factory = fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
-        { services.RemoveAll<IGitReview>(); services.AddSingleton<IGitReview>(provider); }));
+        { if (!realGit) { services.RemoveAll<IGitReview>(); services.AddSingleton<IGitReview>(provider); } }));
         var author = factory.CreateClient();
         var requestedBy = (await author.RegisterAsync()).UserId;
         var project = await author.CreateProjectAsync();
         var task = await author.CreateTaskAsync(project);
-        var profileConfig = factory.Services.GetRequiredService<IConfiguration>();
-        profileConfig[$"Integrations:{project.OrganizationId}:{project.Id}:OpenAI:ApiKey"] = "fixture-transfer-secret";
-        using var profileResponse = await author.SendAsync(HttpMethod.Post, $"/api/v1/organizations/{project.OrganizationId}/projects/{project.Id}/profiles/",
-            new ProfileInput("Original agent", "fixture-original", 65536, 128, 5, 1, 1));
-        var profile = await profileResponse.ReadAsync<ProfileDto>();
+        var profile = await factory.Services.SeedProfileAsync(project, "Original agent");
         var reviewer = factory.CreateClient();
         var reviewerId = (await reviewer.RegisterAsync()).UserId;
         var id = Guid.NewGuid();
         var connection = Guid.NewGuid();
         var version = Guid.NewGuid();
-        var source = new RepositorySnapshot(connection, version, 1, "https://github.com/fixture/repo.git", "main", new string('a', 40), $"teamflow/{id:N}");
-        var prefix = $"Integrations:{project.OrganizationId:D}:{project.Id:D}:GitHub:";
-        var config = factory.Services.GetRequiredService<IConfiguration>();
-        config["GitHub:EnableReview"] = "true"; // Explicit fixture provider; no external read or merge.
-        config[prefix + "CiAppId"] = "100";
-        config[prefix + "RequiredChecks"] = "build";
+        var repositoryPath = Path.GetFullPath("fixture-repository");
+        var source = new RepositorySnapshot(connection, version, 1, repositoryPath, "main", new string('a', 40), $"teamflow/{id:N}", repositoryPath);
+        factory.Services.GetRequiredService<IConfiguration>()["Local:EnableReview"] = "true"; // Review reads the explicit double or a test-owned repository.
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -280,14 +230,11 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
                 Version = version,
                 OrganizationId = project.OrganizationId,
                 ProjectId = project.Id,
-                AppId = 2,
-                InstallationId = 3,
+                Provider = "local",
+                LocalPath = repositoryPath,
                 RepositoryId = 1,
-                Owner = "fixture",
-                Repository = "repo",
                 BaseBranch = "main",
-                BaseCommit = source.BaseCommit,
-                ProtectedPrivateKey = scope.ServiceProvider.GetRequiredService<IntegrationSecrets>().Protect(project.OrganizationId, project.Id, connection, "github", "unused-fixture")
+                BaseCommit = source.BaseCommit
             });
             db.Executions.Add(new()
             {
@@ -307,7 +254,7 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
                 ResultCode = "tests_passed",
                 PublicationState = "published",
                 PullRequestNumber = 7,
-                PullRequestUrl = "https://github.com/fixture/repo/pull/7",
+                PullRequestUrl = $"/api/v1/organizations/{project.OrganizationId}/projects/{project.Id}/repository/local/reviews/{id}",
                 PublishedHeadCommit = new string('b', 40),
                 CreatedAt = fixture.Clock.GetUtcNow()
             });
@@ -341,24 +288,23 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
             await db.WorkItems.Where(t => t.Id == task.Id).ExecuteUpdateAsync(s => s.SetProperty(t => t.Stage, TaskStage.Review));
             await db.SaveChangesAsync();
         }
-        return new(factory, author, reviewer, provider, task.Id,
-            ApiClient.TasksPath(project) + $"/{task.Id}/executions/{id}/review", prefix);
+        return new(factory, author, reviewer, provider, project, task.Id,
+            ApiClient.TasksPath(project) + $"/{task.Id}/executions/{id}/review");
     }
     private sealed class FixtureReview : IGitReview
     {
         public Func<CancellationToken, Task>? BeforeReply { get; set; }
         public GitReviewSnapshot Snapshot { get; set; } = new(new string('b', 40), new string('a', 40), true, false, null, null);
-        public async Task<GitReviewSnapshot> ReadAsync(GitConnection connection, string privateKey, long number, string branch, CiPolicy policy, CancellationToken ct)
+        public async Task<GitReviewSnapshot> ReadAsync(GitConnection connection, RepositorySnapshot snapshot, string expectedHead, CancellationToken ct)
         {
-            Assert.Equal(100, policy.AppId);
-            Assert.Equal(new[] { "build" }, policy.RequiredChecks);
+            Assert.Equal(new string('b', 40), expectedHead);
             var captured = Snapshot;
             if (BeforeReply is not null) await BeforeReply(ct);
             return captured;
         }
     }
     private sealed record Scenario(WebApplicationFactory<Program> Factory, HttpClient Author, HttpClient Reviewer, FixtureReview Provider,
-        Guid TaskId, string Path, string ConfigPrefix) : IDisposable
+        ProjectDto Project, Guid TaskId, string Path) : IDisposable
     {
         public void Dispose() { Author.Dispose(); Reviewer.Dispose(); Factory.Dispose(); }
     }

@@ -28,14 +28,14 @@ public sealed class LocalIntegrationTests(DatabaseFixture fixture) : IClassFixtu
         { ["Codex:Executable"] = FixtureExecutable, ["Codex:EnableRequests"] = "true" }).Build();
         var model = new CodexTextModel(configuration);
         var profile = new AgentProfile { Provider = "codex", Model = "default", MaxInputBytes = 4096, MaxOutputTokens = 128, TimeoutSeconds = 5 };
-        var reply = await model.GenerateAsync(profile, "unused", "& echo cannot-execute-this", 0, CancellationToken.None);
+        var reply = await model.GenerateAsync(profile, "& echo cannot-execute-this", 0, CancellationToken.None);
         Assert.Equal("{\"tool\":\"finish\"}", reply.Text); Assert.Null(reply.EstimatedCostUsd); Assert.Null(reply.InputTokens);
-        var failure = await Assert.ThrowsAsync<ApiException>(() => model.GenerateAsync(profile, "", "fail", 0, CancellationToken.None));
+        var failure = await Assert.ThrowsAsync<ApiException>(() => model.GenerateAsync(profile, "fail", 0, CancellationToken.None));
         Assert.Equal("codex_failed", failure.Code); Assert.DoesNotContain("sensitive", failure.Message);
-        Assert.Equal("provider_invalid_response", (await Assert.ThrowsAsync<ApiException>(() => model.GenerateAsync(profile, "", "empty", 0, CancellationToken.None))).Code);
-        Assert.Equal("provider_timeout", (await Assert.ThrowsAsync<ApiException>(() => model.GenerateAsync(profile, "", "timeout", 0, CancellationToken.None))).Code);
+        Assert.Equal("provider_invalid_response", (await Assert.ThrowsAsync<ApiException>(() => model.GenerateAsync(profile, "empty", 0, CancellationToken.None))).Code);
+        Assert.Equal("provider_timeout", (await Assert.ThrowsAsync<ApiException>(() => model.GenerateAsync(profile, "timeout", 0, CancellationToken.None))).Code);
         configuration["Codex:EnableRequests"] = "false";
-        Assert.Equal("provider_disabled", (await Assert.ThrowsAsync<ApiException>(() => model.GenerateAsync(profile, "", "safe", 0, CancellationToken.None))).Code);
+        Assert.Equal("provider_disabled", (await Assert.ThrowsAsync<ApiException>(() => model.GenerateAsync(profile, "safe", 0, CancellationToken.None))).Code);
     }
 
     [Fact]
@@ -85,11 +85,11 @@ public sealed class LocalIntegrationTests(DatabaseFixture fixture) : IClassFixtu
                 var replay = await localGit.PublishAsync(connection, plan, CancellationToken.None);
                 Assert.Equal(published, replay); Assert.False(File.Exists(Path.Combine(root, "answer.txt")));
                 var snapshot = new RepositorySnapshot(connection.Id, repository.Version, 0, root, "main", repository.BaseCommit, plan.Branch, root);
-                var review = await localGit.ReviewAsync(connection, snapshot, published.HeadCommit, CancellationToken.None);
+                var review = await localGit.ReadAsync(connection, snapshot, published.HeadCommit, CancellationToken.None);
                 Assert.True(review.CiPassed); Assert.False(review.Merged);
                 Assert.Contains("+42", await localGit.DiffAsync(connection, repository.BaseCommit, published.HeadCommit, CancellationToken.None));
                 await GitAsync(root, ["update-ref", "refs/heads/main", published.HeadCommit, repository.BaseCommit]);
-                var merged = await localGit.ReviewAsync(connection, snapshot, published.HeadCommit, CancellationToken.None);
+                var merged = await localGit.ReadAsync(connection, snapshot, published.HeadCommit, CancellationToken.None);
                 Assert.True(merged.Merged); Assert.Equal(repository.BaseCommit, merged.MergeBaseParent);
                 Assert.Equal("base_changed", (await Assert.ThrowsAsync<ApiException>(() => localGit.PublishAsync(connection, plan, CancellationToken.None))).Code);
                 await GitAsync(root, ["update-ref", "refs/heads/main", repository.BaseCommit, published.HeadCommit]);
@@ -115,12 +115,6 @@ public sealed class LocalIntegrationTests(DatabaseFixture fixture) : IClassFixtu
                 Assert.True(await memoryScope.ServiceProvider.GetRequiredService<MemoryIndexAccess>().ProcessAsync(CancellationToken.None));
             using var searchResponse = await client.SendAsync(HttpMethod.Post, path + "/memory/search", new SearchInput("local convention"));
             var bundle = await searchResponse.ReadAsync<ContextBundle>(); Assert.Single(bundle.Sources);
-            using var semanticResponse = await client.SendAsync(HttpMethod.Post, path + "/memory/search", new SearchInput("local", Enumerable.Repeat(1f, 1536).ToArray()));
-            Assert.Empty((await semanticResponse.ReadAsync<ContextBundle>()).Sources);
-            using var scope = fixture.Factory.Services.CreateScope();
-            var access = scope.ServiceProvider.GetRequiredService<ProfileAccess>();
-            Assert.True(await access.IsLocalAsync(project.OrganizationId, project.Id, profile.Id, CancellationToken.None));
-            Assert.Equal("embedding_not_supported", (await Assert.ThrowsAsync<ApiException>(() => access.EmbedAsync(project.OrganizationId, project.Id, profile.Id, ["memory"], 1, CancellationToken.None))).Code);
         }
         finally
         {

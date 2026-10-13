@@ -32,7 +32,7 @@ public sealed class MvpJourneyTests(DatabaseFixture fixture) : IClassFixture<Dat
         var model = new JourneyModel(); var git = new JourneyGit(baseCommit);
         using var factory = fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
         {
-            services.AddSingleton<ITextModel>(model); services.AddSingleton<IEmbeddingModel>(new JourneyEmbedding());
+            services.AddSingleton<ITextModel>(model);
             services.AddSingleton<IGitPublisher>(git); services.AddSingleton<IGitReview>(git);
         }));
         using var human = factory.CreateClient(); var author = await human.RegisterAsync(); var project = await human.CreateProjectAsync();
@@ -40,12 +40,8 @@ public sealed class MvpJourneyTests(DatabaseFixture fixture) : IClassFixture<Dat
         using var outsider = factory.CreateClient(); await outsider.RegisterAsync();
         var root = $"/api/v1/organizations/{project.OrganizationId}/projects/{project.Id}";
         var config = factory.Services.GetRequiredService<IConfiguration>();
-        var prefix = $"Integrations:{project.OrganizationId}:{project.Id}:";
-        config[prefix + "OpenAI:ApiKey"] = "fixture-journey-key";
-        config[prefix + "GitHub:CiAppId"] = "100"; config[prefix + "GitHub:RequiredChecks"] = "build";
-        // All external boundaries are registered doubles; these flags never enable a real call in this host.
-        config["OpenAI:EnableRequests"] = "true"; config["GitHub:EnablePublication"] = "true"; config["GitHub:EnableReview"] = "true";
-        config["Memory:EnableEmbeddingRequests"] = "true"; config["Memory:EmbeddingUsdPerMillionTokens"] = "1";
+        // The model, publication and review boundaries are registered doubles; these flags never enable a real call in this host.
+        config["Codex:EnableRequests"] = "true"; config["Local:EnablePublication"] = "true"; config["Local:EnableReview"] = "true";
         Guid connectionId;
         using (var scope = factory.Services.CreateScope())
         {
@@ -57,23 +53,15 @@ public sealed class MvpJourneyTests(DatabaseFixture fixture) : IClassFixture<Dat
                 Version = Guid.NewGuid(),
                 OrganizationId = project.OrganizationId,
                 ProjectId = project.Id,
-                Owner = "fixture",
-                Repository = "repo",
+                Provider = "local",
+                LocalPath = sourceRepo.Path,
                 RepositoryId = 1,
-                AppId = 2,
-                InstallationId = 3,
                 BaseBranch = "main",
-                BaseCommit = baseCommit,
-                ProtectedPrivateKey = scope.ServiceProvider.GetRequiredService<IntegrationSecrets>().Protect(project.OrganizationId, project.Id, connectionId, "github", "unused-fixture-git-key")
+                BaseCommit = baseCommit
             });
             await db.SaveChangesAsync();
         }
-        async Task<ProfileDto> ProfileAsync(string name, string modelName)
-        {
-            using var response = await human.SendAsync(HttpMethod.Post, root + "/profiles/", new ProfileInput(name, modelName, 65536, 512, 10, 1, 1));
-            return await response.ReadAsync<ProfileDto>();
-        }
-        var originalProfile = await ProfileAsync("Original", "fixture-answer"); var replacementProfile = await ProfileAsync("Replacement", "fixture-newline");
+        var originalProfile = await factory.Services.SeedProfileAsync(project, "Original"); var replacementProfile = await factory.Services.SeedProfileAsync(project, "Replacement");
         using var issue = await human.SendAsync(HttpMethod.Post, root + "/runners/", new RunnerInput()); var credential = await issue.ReadAsync<IssuedRunner>();
         using var runner = factory.CreateClient(); runner.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential.Token);
         async Task<TaskDto> PlanTaskAsync(string key)
@@ -190,9 +178,9 @@ public sealed class MvpJourneyTests(DatabaseFixture fixture) : IClassFixture<Dat
         public Guid? ExpectedSourceId { get; set; }
         public bool SawSourceDuringPlanning { get; private set; }
         public bool SawSourceDuringExecution { get; private set; }
-        public Task<TextModelResult> GenerateAsync(AgentProfile profile, string key, string prompt, decimal budget, CancellationToken ct)
+        public Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budget, CancellationToken ct)
         {
-            Calls++; Assert.Contains("untrusted data", prompt); Assert.DoesNotContain(key, prompt);
+            Calls++; Assert.Contains("untrusted data", prompt);
             if (prompt.StartsWith("Propose", StringComparison.Ordinal))
             {
                 if (ExpectedSourceId is { } source) { Assert.Contains(source.ToString(), prompt); SawSourceDuringPlanning = true; }
@@ -204,17 +192,12 @@ public sealed class MvpJourneyTests(DatabaseFixture fixture) : IClassFixture<Dat
             var action = context.Evidence.Length switch
             {
                 0 => new ModelAction("read", "answer.txt"),
-                1 => new ModelAction("write", "answer.txt", profile.Model == "fixture-newline" ? "42\n" : "42", context.Evidence[0].Hash),
+                1 => new ModelAction("write", "answer.txt", profile.Name == "Replacement" ? "42\n" : "42", context.Evidence[0].Hash),
                 2 => new ModelAction("test"),
                 _ => new ModelAction("finish")
             };
             return Task.FromResult(new TextModelResult(JsonSerializer.Serialize(action, ApiClient.JsonOptions), 100, 100, 0.001m));
         }
-    }
-    private sealed class JourneyEmbedding : IEmbeddingModel
-    {
-        public Task<EmbeddingResult> EmbedAsync(string key, string[] inputs, decimal price, CancellationToken ct) =>
-            Task.FromResult(new EmbeddingResult(inputs.Select(_ => Enumerable.Repeat(0.1f, 1536).ToArray()).ToArray(), 100, 0.0001m));
     }
     private sealed class JourneyGit(string baseCommit) : IGitPublisher, IGitReview
     {
@@ -223,18 +206,18 @@ public sealed class MvpJourneyTests(DatabaseFixture fixture) : IClassFixture<Dat
         public int PrCreates { get; private set; }
         public long? MergedNumber { get; set; }
         public string? MergeCommit { get; set; }
-        public Task<PublishedPullRequest> PublishAsync(GitConnection connection, string key, PublicationPlan plan, CancellationToken ct)
+        public Task<PublishedPullRequest> PublishAsync(GitConnection connection, PublicationPlan plan, CancellationToken ct)
         {
-            Assert.Single(plan.Files); Assert.Equal("42", plan.Files[0].Content.Trim()); Assert.DoesNotContain(key, plan.Body);
+            Assert.Single(plan.Files); Assert.Equal("42", plan.Files[0].Content.Trim());
             if (_receipts.TryGetValue(plan.ExecutionId, out var receipt)) return Task.FromResult(receipt);
-            PrCreates++; receipt = new(PrCreates, $"https://github.com/fixture/repo/pull/{PrCreates}", plan.BaseCommit, Heads[plan.ExecutionId], plan.Branch);
+            PrCreates++; receipt = new(PrCreates, $"/api/v1/organizations/{connection.OrganizationId}/projects/{connection.ProjectId}/repository/local/reviews/{plan.ExecutionId}", plan.BaseCommit, Heads[plan.ExecutionId], plan.Branch);
             _receipts.Add(plan.ExecutionId, receipt);
             throw new TeamFlow.Api.Http.ApiException(502, "git_unavailable", "Simulated response lost after PR creation.");
         }
-        public Task<GitReviewSnapshot> ReadAsync(GitConnection connection, string key, long number, string branch, CiPolicy policy, CancellationToken ct)
+        public Task<GitReviewSnapshot> ReadAsync(GitConnection connection, RepositorySnapshot snapshot, string expectedHead, CancellationToken ct)
         {
-            var receipt = _receipts.Values.Single(r => r.Number == number); Assert.Equal(receipt.Branch, branch);
-            var merged = MergedNumber == number;
+            var receipt = _receipts.Values.Single(r => r.Branch == snapshot.Branch); Assert.Equal(receipt.HeadCommit, expectedHead);
+            var merged = MergedNumber == receipt.Number;
             return Task.FromResult(new GitReviewSnapshot(receipt.HeadCommit, merged ? MergeCommit ?? baseCommit : baseCommit, true, merged, merged ? MergeCommit : null, merged ? baseCommit : null));
         }
     }

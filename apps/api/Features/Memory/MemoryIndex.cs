@@ -11,8 +11,8 @@ public sealed class MemoryIndex
     public Guid RequestedBy { get; set; }
     public string IdempotencyKey { get; set; } = "";
     public string RequestHash { get; set; } = "";
-    public string Model { get; set; } = "text-embedding-3-small";
-    public int Dimensions { get; set; } = 1536;
+    public string Model { get; set; } = "text-only";
+    public int Dimensions { get; set; }
     public string Chunker { get; set; } = "utf8-2048-v1";
     public string State { get; set; } = "queued";
     public string? FailureCode { get; set; }

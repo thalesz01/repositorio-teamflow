@@ -143,8 +143,8 @@ public sealed class CheckpointTests(DatabaseFixture fixture) : IClassFixture<Dat
         using (var scope = fixture.Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            // Test-only snapshot: no repository credentials or external GitHub calls.
-            var source = new RepositorySnapshot(Guid.NewGuid(), Guid.NewGuid(), 1, "https://github.com/fixture/repo.git", "main", new string('a', 40), $"teamflow/{execution.Id:N}");
+            // Test-only snapshot: a local fixture path, no repository credentials or remote calls.
+            var source = new RepositorySnapshot(Guid.NewGuid(), Guid.NewGuid(), 1, Path.GetFullPath("fixture-repository"), "main", new string('a', 40), $"teamflow/{execution.Id:N}");
             await db.Executions.Where(e => e.Id == execution.Id).ExecuteUpdateAsync(s => s.SetProperty(e => e.RepositorySnapshot,
                 JsonSerializer.Serialize(source, ApiClient.JsonOptions)));
         }

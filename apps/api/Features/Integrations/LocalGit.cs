@@ -1,12 +1,31 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using TeamFlow.Api.Http;
 
 namespace TeamFlow.Api.Features.Integrations;
 
+public sealed record PublicationFile(string Path, string Content, string Hash);
+public sealed record PublicationPlan(Guid ExecutionId, string BaseCommit, string Branch, string Title,
+    string Body, DateTimeOffset CreatedAt, PublicationFile[] Files);
+public sealed record PublishedPullRequest(long Number, string Url, string BaseCommit, string HeadCommit, string Branch);
+public sealed record GitReviewSnapshot(string HeadCommit, string BaseCommit, bool CiPassed,
+    bool Merged, string? MergeCommit, string? MergeBaseParent);
+
+// Git is a real boundary: tests replace these two seams, production uses the local implementation.
+public interface IGitPublisher
+{
+    Task<PublishedPullRequest> PublishAsync(GitConnection connection, PublicationPlan plan, CancellationToken ct);
+}
+
+public interface IGitReview
+{
+    Task<GitReviewSnapshot> ReadAsync(GitConnection connection, RepositorySnapshot snapshot, string expectedHead, CancellationToken ct);
+}
+
 // Git plumbing writes only objects and the execution ref; it never checks out or edits the user's files.
-public sealed class LocalGit(LocalRepository local)
+public sealed class LocalGit(LocalRepository local) : IGitPublisher, IGitReview
 {
     public async Task PrepareBaseAsync(GitConnection connection, CancellationToken ct)
     {
@@ -76,9 +95,22 @@ public sealed class LocalGit(LocalRepository local)
         return true;
     }
 
+    private static void Validate(GitConnection connection, PublicationPlan plan)
+    {
+        if (connection.RevokedAt is not null || plan.ExecutionId == Guid.Empty || !GitRules.IsCommit(plan.BaseCommit)
+            || plan.Branch != $"teamflow/{plan.ExecutionId:N}" || plan.Title.Length is < 1 or > 160 || plan.Title.Any(char.IsControl)
+            || Encoding.UTF8.GetByteCount(plan.Body) > 32768 || plan.Files.Length is < 1 or > 100
+            || plan.Files.Select(f => f.Path).Distinct(StringComparer.Ordinal).Count() != plan.Files.Length
+            || plan.Files.Any(f => string.IsNullOrWhiteSpace(f.Path) || f.Path.Length > 240 || f.Path.Contains('\\') || f.Path.Contains(':')
+                || f.Path.StartsWith('/') || f.Path.Split('/').Any(s => s.StartsWith('.') || s.Length == 0)
+                || Encoding.UTF8.GetByteCount(f.Content) > 16384
+                || f.Hash != Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(f.Content)))))
+            throw new ApiException(400, "invalid_publication", "Publication plan violates the verified file contract.");
+    }
+
     public async Task<PublishedPullRequest> PublishAsync(GitConnection connection, PublicationPlan plan, CancellationToken ct)
     {
-        GitHubPublisher.Validate(connection, plan);
+        Validate(connection, plan);
         var path = local.AuthorizedPath(connection.OrganizationId, connection.ProjectId, connection.LocalPath);
         if (await local.VerifyAsync(path, connection.BaseBranch, ct) != plan.BaseCommit)
             throw new ApiException(409, "base_changed", "Local base changed before publication.");
@@ -126,7 +158,7 @@ public sealed class LocalGit(LocalRepository local)
         }
     }
 
-    public async Task<GitReviewSnapshot> ReviewAsync(GitConnection connection, RepositorySnapshot snapshot, string expectedHead, CancellationToken ct)
+    public async Task<GitReviewSnapshot> ReadAsync(GitConnection connection, RepositorySnapshot snapshot, string expectedHead, CancellationToken ct)
     {
         var path = local.AuthorizedPath(connection.OrganizationId, connection.ProjectId, connection.LocalPath);
         var head = (await RunAsync(path, ["rev-parse", "--verify", "refs/heads/" + snapshot.Branch], null, null, ct)).Trim();

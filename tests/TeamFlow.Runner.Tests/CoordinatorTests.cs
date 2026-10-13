@@ -65,7 +65,7 @@ public sealed class CoordinatorTests
             var id = Guid.NewGuid();
             _message = new(1, id, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
                 now.AddSeconds(120), now.AddMinutes(5), 1, new("Task", "Description", ["Answer equals 42"], Guid.NewGuid()),
-                new(900, 3, 10, 5), JsonSerializer.SerializeToElement(new CheckoutSource("https://github.com/fixture/repo.git", new string('a', 40), $"teamflow/{id:N}")), Guid.NewGuid());
+                new(900, 3, 10, 5), JsonSerializer.SerializeToElement(new CheckoutSource(Path.GetFullPath("fixture-repo"), new string('a', 40), $"teamflow/{id:N}", Path.GetFullPath("fixture-repo"))), Guid.NewGuid());
         }
         public Task<ExecutionMessage?> ClaimAsync(int leaseSeconds, CancellationToken ct) => Task.FromResult(Empty ? null : _message);
         public Task<bool> HeartbeatAsync(ExecutionMessage message, int leaseSeconds, CancellationToken ct) => Task.FromResult(!WaitForCancellation);

@@ -40,7 +40,7 @@ public sealed class HarnessIntegrationTests(DatabaseFixture fixture) : IClassFix
         var execution = await schedule.ReadAsync<ExecutionDto>();
         using (var scope = fixture.Factory.Services.CreateScope())
         {
-            var source = new RepositorySnapshot(Guid.NewGuid(), Guid.NewGuid(), 1, "https://github.com/fixture/repo.git",
+            var source = new RepositorySnapshot(Guid.NewGuid(), Guid.NewGuid(), 1, Path.GetFullPath("fixture-repository"),
                 "main", commit, $"teamflow/{execution.Id:N}");
             await scope.ServiceProvider.GetRequiredService<AppDbContext>().Executions.Where(e => e.Id == execution.Id)
                 .ExecuteUpdateAsync(s => s.SetProperty(e => e.RepositorySnapshot, JsonSerializer.Serialize(source, ApiClient.JsonOptions)));

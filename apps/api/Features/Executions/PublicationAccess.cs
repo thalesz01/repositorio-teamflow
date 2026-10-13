@@ -13,7 +13,7 @@ namespace TeamFlow.Api.Features.Executions;
 public sealed record PublicationStatus(string State, int Attempts, string? FailureCode, PublishedPullRequest? PullRequest);
 
 public sealed class PublicationAccess(AppDbContext db, TaskAccess tasks, RepositoryAccess repositories,
-    IGitPublisher publisher, TimeProvider clock, IConfiguration configuration)
+    TimeProvider clock, IConfiguration configuration)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -31,10 +31,8 @@ public sealed class PublicationAccess(AppDbContext db, TaskAccess tasks, Reposit
 
     public async Task<PublicationStatus> PublishAsync(Guid id, CancellationToken ct)
     {
-        var sourceJson = await db.Executions.Where(e => e.Id == id).Select(e => e.RepositorySnapshot).SingleOrDefaultAsync(ct);
-        var local = sourceJson is not null && JsonSerializer.Deserialize<RepositorySnapshot>(sourceJson, JsonOptions)?.LocalPath is not null;
-        if (!(local ? configuration.GetValue<bool>("Local:EnablePublication") : configuration.GetValue<bool>("GitHub:EnablePublication")))
-            throw new ApiException(503, "publication_disabled", "External publication is disabled on this server.");
+        if (!configuration.GetValue<bool>("Local:EnablePublication"))
+            throw new ApiException(503, "publication_disabled", "Local publication is disabled on this server.");
         Execution execution;
         var lease = Guid.NewGuid();
         await using (var transaction = await db.Database.BeginTransactionAsync(ct))
@@ -96,9 +94,9 @@ public sealed class PublicationAccess(AppDbContext db, TaskAccess tasks, Reposit
                 + $"\n\nExecution: {id:D}\nBase: {repository.BaseCommit}\nCheckpoint: {checkpoint.ContentHash}"
                 + "\n\nChanges:\n" + string.Join("\n", files.Select(f => $"- {f.Path}: SHA-256 {f.Hash}"))
                 + "\n\nSuccessful controller tests: " + context.Evidence.Count(e => e.Tool == "test" && e.Succeeded)
-                + "\nPending: none. Tool outputs omitted. Human review and configured CI are still required.";
+                + "\nPending: none. Tool outputs omitted. Independent review of the exact head is still required.";
             var plan = new PublicationPlan(id, repository.BaseCommit, repository.Branch, task.Title, body, execution.CreatedAt, files.ToArray());
-            var published = await repositories.PublishAsync(execution.OrganizationId, execution.ProjectId, repository, plan, publisher, timeout.Token);
+            var published = await repositories.PublishAsync(execution.OrganizationId, execution.ProjectId, repository, plan, timeout.Token);
             await using var transaction = await db.Database.BeginTransactionAsync(timeout.Token);
             await db.Entry(execution).ReloadAsync(timeout.Token);
             if (execution.PublicationLease != lease || execution.PublicationLeaseUntil <= clock.GetUtcNow())

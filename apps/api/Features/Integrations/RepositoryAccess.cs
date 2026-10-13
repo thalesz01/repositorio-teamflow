@@ -7,7 +7,8 @@ using TeamFlow.Api.Http;
 
 namespace TeamFlow.Api.Features.Integrations;
 
-public sealed class RepositoryAccess(AppDbContext db, IntegrationSecrets secrets, IGitProvider git, LeaseAccess leases, LocalRepository local, TimeProvider clock, LocalGit localGit)
+public sealed class RepositoryAccess(AppDbContext db, LeaseAccess leases, LocalRepository local, TimeProvider clock, LocalGit localGit,
+    IGitPublisher publisher, IGitReview review)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -15,7 +16,7 @@ public sealed class RepositoryAccess(AppDbContext db, IntegrationSecrets secrets
     {
         var connection = await db.GitConnections.SingleOrDefaultAsync(g => g.OrganizationId == organizationId
             && g.ProjectId == projectId && g.RevokedAt == null, ct);
-        if (connection is { Provider: "local" } && (!GitRules.IsCommit(connection.BaseCommit) || string.IsNullOrWhiteSpace(connection.BaseBranch)
+        if (connection is not null && (!GitRules.IsCommit(connection.BaseCommit) || string.IsNullOrWhiteSpace(connection.BaseBranch)
             || !Directory.Exists(Path.Combine(connection.LocalPath, ".git"))))
         {
             var lockPath = OperatingSystem.IsWindows() ? connection.LocalPath.ToUpperInvariant() : connection.LocalPath;
@@ -30,48 +31,24 @@ public sealed class RepositoryAccess(AppDbContext db, IntegrationSecrets secrets
             }
         }
         return connection is null ? null : JsonSerializer.Serialize(new RepositorySnapshot(connection.Id, connection.Version,
-            connection.RepositoryId, GitRules.Url(connection), connection.BaseBranch, connection.BaseCommit, $"teamflow/{executionId:N}", connection.Provider == "local" ? connection.LocalPath : null), JsonOptions);
+            connection.RepositoryId, GitRules.Url(connection), connection.BaseBranch, connection.BaseCommit, $"teamflow/{executionId:N}", connection.LocalPath), JsonOptions);
     }
 
     public async Task<PublishedPullRequest> PublishAsync(Guid organizationId, Guid projectId, RepositorySnapshot snapshot,
-        PublicationPlan plan, IGitPublisher publisher, CancellationToken ct)
+        PublicationPlan plan, CancellationToken ct)
     {
-        var connection = await db.GitConnections.AsNoTracking().SingleOrDefaultAsync(g => g.Id == snapshot.ConnectionId
-            && g.OrganizationId == organizationId && g.ProjectId == projectId && g.Version == snapshot.ConnectionVersion
-            && g.RepositoryId == snapshot.RepositoryId && g.RevokedAt == null, ct)
-            ?? throw new ApiException(409, "repository_revoked", "Repository connection was revoked or replaced.");
-        if (connection.Provider == "local")
-        {
-            var published = await localGit.PublishAsync(connection, plan, ct);
-            if (!await db.GitConnections.AnyAsync(g => g.Id == connection.Id && g.Version == snapshot.ConnectionVersion && g.RevokedAt == null, ct))
-                throw new ApiException(409, "repository_revoked", "Local connection changed during publication; reconcile its branch.");
-            return published;
-        }
-        var key = secrets.Unprotect(organizationId, projectId, connection.Id, "github", connection.ProtectedPrivateKey);
-        var receipt = await publisher.PublishAsync(connection, key, plan, ct);
-        if (!await db.GitConnections.AnyAsync(g => g.Id == connection.Id && g.Version == snapshot.ConnectionVersion && g.RevokedAt == null, ct))
-            throw new ApiException(409, "repository_revoked", "Connection changed during publication; reconcile the external PR.");
-        return receipt;
+        var connection = await RequireCurrentAsync(organizationId, projectId, snapshot, ct);
+        var published = await publisher.PublishAsync(connection, plan, ct);
+        await RequireUnchangedAsync(connection, snapshot, "Local connection changed during publication; reconcile its branch.", ct);
+        return published;
     }
 
     public async Task<GitReviewSnapshot> ReviewAsync(Guid organizationId, Guid projectId, RepositorySnapshot snapshot,
-        long number, CiPolicy policy, IGitReview review, CancellationToken ct, string? expectedHead = null)
+        string expectedHead, CancellationToken ct)
     {
-        var connection = await db.GitConnections.AsNoTracking().SingleOrDefaultAsync(g => g.Id == snapshot.ConnectionId
-            && g.OrganizationId == organizationId && g.ProjectId == projectId && g.Version == snapshot.ConnectionVersion
-            && g.RepositoryId == snapshot.RepositoryId && g.RevokedAt == null, ct)
-            ?? throw new ApiException(409, "repository_revoked", "Repository connection was revoked or replaced.");
-        if (connection.Provider == "local")
-        {
-            var localResult = await localGit.ReviewAsync(connection, snapshot, expectedHead ?? "", ct);
-            if (!await db.GitConnections.AnyAsync(g => g.Id == connection.Id && g.Version == snapshot.ConnectionVersion && g.RevokedAt == null, ct))
-                throw new ApiException(409, "repository_revoked", "Local connection changed during review.");
-            return localResult;
-        }
-        var key = secrets.Unprotect(organizationId, projectId, connection.Id, "github", connection.ProtectedPrivateKey);
-        var result = await review.ReadAsync(connection, key, number, snapshot.Branch, policy, ct);
-        if (!await db.GitConnections.AnyAsync(g => g.Id == connection.Id && g.Version == snapshot.ConnectionVersion && g.RevokedAt == null, ct))
-            throw new ApiException(409, "repository_revoked", "Connection changed during review.");
+        var connection = await RequireCurrentAsync(organizationId, projectId, snapshot, ct);
+        var result = await review.ReadAsync(connection, snapshot, expectedHead, ct);
+        await RequireUnchangedAsync(connection, snapshot, "Local connection changed during review.", ct);
         return result;
     }
 
@@ -79,39 +56,37 @@ public sealed class RepositoryAccess(AppDbContext db, IntegrationSecrets secrets
     {
         var connection = await db.GitConnections.AsNoTracking().SingleOrDefaultAsync(g => g.Id == snapshot.ConnectionId
             && g.OrganizationId == organizationId && g.ProjectId == projectId && g.Version == snapshot.ConnectionVersion
-            && g.Provider == "local" && g.RevokedAt == null, ct)
+            && g.RevokedAt == null, ct)
             ?? throw new ApiException(404, "repository_not_configured", "Active local connection not found.");
         var diff = await localGit.DiffAsync(connection, snapshot.BaseCommit, head, ct);
-        if (!await db.GitConnections.AnyAsync(g => g.Id == connection.Id && g.Version == snapshot.ConnectionVersion && g.RevokedAt == null, ct))
-            throw new ApiException(409, "repository_revoked", "Local connection changed during diff retrieval.");
+        await RequireUnchangedAsync(connection, snapshot, "Local connection changed during diff retrieval.", ct);
         return diff;
     }
 
-    public async Task<InstallationToken> CheckoutTokenAsync(Guid executionId, Guid leaseToken, ClaimsPrincipal user, CancellationToken ct)
+    public async Task<CheckoutGrant> CheckoutGrantAsync(Guid executionId, Guid leaseToken, ClaimsPrincipal user, CancellationToken ct)
     {
         var execution = await leases.RequireAsync(executionId, leaseToken, user, ct);
         var snapshot = execution.RepositorySnapshot is null ? null : JsonSerializer.Deserialize<RepositorySnapshot>(execution.RepositorySnapshot, JsonOptions);
         if (snapshot is null) throw new ApiException(409, "repository_not_configured", "Execution has no repository snapshot.");
-        var connection = await db.GitConnections.AsNoTracking().SingleOrDefaultAsync(g => g.Id == snapshot.ConnectionId
-            && g.OrganizationId == execution.OrganizationId && g.ProjectId == execution.ProjectId
-            && g.Version == snapshot.ConnectionVersion && g.RevokedAt == null, ct)
-            ?? throw new ApiException(409, "repository_revoked", "Repository connection was revoked or replaced.");
-        if (connection.Provider == "local")
-        {
-            local.AuthorizedPath(connection.OrganizationId, connection.ProjectId, connection.LocalPath);
-            if (await local.VerifyAsync(connection.LocalPath, connection.BaseBranch, ct) != snapshot.BaseCommit)
-                throw new ApiException(409, "base_changed", "Local base branch changed; schedule a new validated execution.");
-            await leases.RequireAsync(executionId, leaseToken, user, ct);
-            if (!await db.GitConnections.AnyAsync(g => g.Id == connection.Id && g.Version == snapshot.ConnectionVersion && g.RevokedAt == null, ct))
-                throw new ApiException(409, "repository_revoked", "Local connection changed during checkout authorization.");
-            return new("local", clock.GetUtcNow().AddSeconds(60));
-        }
-        var key = secrets.Unprotect(connection.OrganizationId, connection.ProjectId, connection.Id, "github", connection.ProtectedPrivateKey);
-        var token = await git.TokenAsync(connection, key, ct);
+        var connection = await RequireCurrentAsync(execution.OrganizationId, execution.ProjectId, snapshot, ct);
+        local.AuthorizedPath(connection.OrganizationId, connection.ProjectId, connection.LocalPath);
+        if (await local.VerifyAsync(connection.LocalPath, connection.BaseBranch, ct) != snapshot.BaseCommit)
+            throw new ApiException(409, "base_changed", "Local base branch changed; schedule a new validated execution.");
         await leases.RequireAsync(executionId, leaseToken, user, ct);
-        // Revocation during token generation must also prevent credential delivery.
+        await RequireUnchangedAsync(connection, snapshot, "Local connection changed during checkout authorization.", ct);
+        return new("local", clock.GetUtcNow().AddSeconds(60));
+    }
+
+    private async Task<GitConnection> RequireCurrentAsync(Guid organizationId, Guid projectId, RepositorySnapshot snapshot, CancellationToken ct) =>
+        await db.GitConnections.AsNoTracking().SingleOrDefaultAsync(g => g.Id == snapshot.ConnectionId
+            && g.OrganizationId == organizationId && g.ProjectId == projectId && g.Version == snapshot.ConnectionVersion
+            && g.RepositoryId == snapshot.RepositoryId && g.RevokedAt == null, ct)
+        ?? throw new ApiException(409, "repository_revoked", "Repository connection was revoked or replaced.");
+
+    // Revocation or replacement during Git I/O must also invalidate the result.
+    private async Task RequireUnchangedAsync(GitConnection connection, RepositorySnapshot snapshot, string message, CancellationToken ct)
+    {
         if (!await db.GitConnections.AnyAsync(g => g.Id == connection.Id && g.Version == snapshot.ConnectionVersion && g.RevokedAt == null, ct))
-            throw new ApiException(409, "repository_revoked", "Repository connection was revoked or replaced.");
-        return token;
+            throw new ApiException(409, "repository_revoked", message);
     }
 }

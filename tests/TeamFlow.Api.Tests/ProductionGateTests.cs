@@ -9,7 +9,7 @@ public sealed class ProductionGateTests(DatabaseFixture fixture) : IClassFixture
     public void ProductionCannotBeActivatedByEnablingExternalCalls()
     {
         using var factory = fixture.Factory.WithWebHostBuilder(builder => builder.UseEnvironment("Production")
-            .UseSetting("OpenAI:EnableRequests", "true").UseSetting("GitHub:EnablePublication", "true"));
+            .UseSetting("Codex:EnableRequests", "true").UseSetting("Local:EnablePublication", "true"));
         var error = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
         Assert.Contains("Production deployment is blocked", error.ToString());
     }

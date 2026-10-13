@@ -1,7 +1,10 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.DependencyInjection;
+using TeamFlow.Api.Data;
 using TeamFlow.Api.Features.Auth;
+using TeamFlow.Api.Features.Integrations;
 using TeamFlow.Api.Features.Organizations;
 using TeamFlow.Api.Features.Projects;
 using TeamFlow.Api.Features.Tasks;
@@ -21,6 +24,32 @@ public static class ApiClient
         var organization = await organizationResponse.ReadAsync<OrganizationDto>();
         using var projectResponse = await client.SendAsync(HttpMethod.Post, $"/api/v1/organizations/{organization.Id}/projects/", new ProjectInput("Test project"));
         return await projectResponse.ReadAsync<ProjectDto>();
+    }
+
+    // Production creates the Codex binding through the machine endpoint, which needs the CLI. Tests that
+    // only need a scoped profile (optionally priced to exercise budgets) insert the same record directly.
+    public static async Task<ProfileDto> SeedProfileAsync(this IServiceProvider services, ProjectDto project, string name = "Fixture",
+        decimal inputUsdPerMillionTokens = 1m, decimal outputUsdPerMillionTokens = 1m)
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var profile = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = project.OrganizationId,
+            ProjectId = project.Id,
+            Provider = "codex",
+            Name = name,
+            Model = "default",
+            MaxInputBytes = 32768,
+            MaxOutputTokens = 8192,
+            TimeoutSeconds = 120,
+            InputUsdPerMillionTokens = inputUsdPerMillionTokens,
+            OutputUsdPerMillionTokens = outputUsdPerMillionTokens
+        };
+        db.AgentProfiles.Add(profile);
+        await db.SaveChangesAsync();
+        return ProfileEndpoints.ToDto(profile);
     }
 
     public static string TasksPath(ProjectDto project) => $"/api/v1/organizations/{project.OrganizationId}/projects/{project.Id}/tasks";

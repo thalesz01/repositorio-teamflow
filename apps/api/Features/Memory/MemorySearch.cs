@@ -11,7 +11,7 @@ namespace TeamFlow.Api.Features.Memory;
 public sealed record ContextSource(Guid ItemId, Guid Version, Guid IndexId, int Sequence, string Key, string Title,
     string Content, string ContentHash, string SourceHash, string? Commit, string? PullRequestUrl);
 public sealed record ContextBundle(int SchemaVersion, string Query, ContextSource[] Sources, int Bytes, string[] Warnings);
-public sealed record SearchInput(string Query, float[]? Vector = null, int MaxBytes = 8192);
+public sealed record SearchInput(string Query, int MaxBytes = 8192);
 public sealed class SearchRow
 {
     public Guid ItemId { get; set; }
@@ -35,27 +35,21 @@ public sealed class MemorySearch(AppDbContext db, ProjectAccess projects)
     {
         await projects.RequireAsync(organizationId, projectId, user, ct);
         var query = Input.Required(input.Query, "query", 1000);
-        if (input.MaxBytes is < 2048 or > 16384 || input.Vector is { } v && (v.Length != 1536 || v.Any(f => !float.IsFinite(f)) || v.All(f => f == 0)))
-            throw new ApiException(400, "invalid_search", "Context requires a bounded query and an optional finite 1536-dimensional vector.");
-        var vector = input.Vector ?? Enumerable.Repeat(1f, 1536).ToArray();
-        var semantic = input.Vector is not null;
+        if (input.MaxBytes is < 2048 or > 16384)
+            throw new ApiException(400, "invalid_search", "Context requires a bounded query and a context budget of 2048..16384 bytes.");
         // Tenant, source status, live version and completed index are filtered inside SQL before ranking.
         var rows = await db.Database.SqlQuery<SearchRow>($"""
             SELECT m."Id" AS "ItemId", m."Version", i."Id" AS "IndexId", c."Sequence", m."Key", m."Title",
               c."Content", c."ContentHash", m."ContentHash" AS "SourceHash", m."Commit", m."PullRequestUrl",
-              (ts_rank(to_tsvector('simple', m."Title" || ' ' || c."Content"), plainto_tsquery('simple', {query}))::double precision
-                + CASE WHEN {semantic} THEN 1 - (c."Embedding"::vector <=> {vector}::real[]::vector) ELSE 0 END) AS "Score"
+              ts_rank(to_tsvector('simple', m."Title" || ' ' || c."Content"), plainto_tsquery('simple', {query}))::double precision AS "Score"
             FROM "MemoryChunks" c JOIN "MemoryIndexes" i ON i."Id" = c."IndexId"
               JOIN "MemoryItems" m ON m."Id" = i."ItemId" AND m."OrganizationId" = i."OrganizationId" AND m."ProjectId" = i."ProjectId"
             WHERE m."OrganizationId" = {organizationId} AND m."ProjectId" = {projectId} AND m."ArchivedAt" IS NULL
               AND m."Status" = 'Validated' AND m."Version" = i."SourceVersion" AND i."State" = 'completed'
-              AND ((i."Model" = 'text-embedding-3-small' AND i."Dimensions" = 1536)
-                OR (NOT {semantic} AND i."Model" = 'text-only' AND i."Dimensions" = 0))
               AND NOT EXISTS (SELECT 1 FROM "MemoryIndexes" newer WHERE newer."ItemId" = i."ItemId"
                 AND newer."SourceVersion" = i."SourceVersion" AND newer."State" = 'completed'
-                AND newer."Model" = i."Model" AND newer."Dimensions" = i."Dimensions"
                 AND (newer."CreatedAt", newer."Id") > (i."CreatedAt", i."Id"))
-              AND ({semantic} OR to_tsvector('simple', m."Title" || ' ' || c."Content") @@ plainto_tsquery('simple', {query}))
+              AND to_tsvector('simple', m."Title" || ' ' || c."Content") @@ plainto_tsquery('simple', {query})
             ORDER BY "Score" DESC, m."UpdatedAt" DESC, m."Id", c."Sequence" LIMIT 20
             """).ToListAsync(ct);
         var sources = new List<ContextSource>(); var itemIds = new HashSet<Guid>();

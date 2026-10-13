@@ -42,19 +42,9 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
     [Fact]
     public async Task ConfirmedCliAnswerCanReplayAndRecoverWithUnknownBillingAsync()
     {
-        using var setup = await SetupAsync(new FixtureModel());
+        using var setup = await SetupAsync(null, inputUsd: 0, outputUsd: 0);
         var configuration = setup.Factory.Services.GetRequiredService<IConfiguration>();
         configuration["Codex:Executable"] = LocalIntegrationTests.FixtureExecutable;
-        configuration["Codex:EnableRequests"] = "true"; configuration["OpenAI:EnableRequests"] = "false";
-        configuration[$"Integrations:{setup.Project.OrganizationId:D}:{setup.Project.Id:D}:Codex:Enabled"] = "true";
-        using (var scope = setup.Factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var execution = await db.Executions.SingleAsync(e => e.Id == setup.Execution.Id);
-            var profile = await db.AgentProfiles.SingleAsync(p => p.Id == execution.AgentProfileId);
-            profile.Provider = "codex"; profile.InputUsdPerMillionTokens = 0; profile.OutputUsdPerMillionTokens = 0;
-            await db.SaveChangesAsync();
-        }
         var input = new ModelTurnInput(setup.Lease, Guid.NewGuid(), 0, new(["answer.txt"], ["answer.txt"]));
         using var first = await setup.Runner.PostAsJsonAsync(setup.Path + "/model-turn", input);
         var reply = await first.ReadAsync<ModelTurnReply>();
@@ -69,22 +59,48 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
     }
 
     [Fact]
-    public async Task UnknownConsumptionBlocksRetryAndRemainsUnknownAsync()
+    public async Task UnknownCliConsumptionStaysUnknownAndDoesNotBlockLaterTurnsAsync()
     {
         var model = new FixtureModel { Cost = null };
         using var setup = await SetupAsync(model);
         var input = new ModelTurnInput(setup.Lease, Guid.NewGuid(), 0, new(["answer.txt"], ["answer.txt"]));
-        for (var i = 0; i < 3; i++)
-        {
-            using var response = await setup.Runner.PostAsJsonAsync(setup.Path + "/model-turn", i == 2 ? input with { OperationId = Guid.NewGuid() } : input);
-            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-            Assert.Equal("model_outcome_uncertain", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
-        }
+        using var first = await setup.Runner.PostAsJsonAsync(setup.Path + "/model-turn", input);
+        Assert.Null((await first.ReadAsync<ModelTurnReply>()).EstimatedCostUsd);
         Assert.Equal(1, model.Calls);
         using var scope = setup.Factory.Services.CreateScope();
         var turn = await scope.ServiceProvider.GetRequiredService<AppDbContext>().ModelTurns.SingleAsync(t => t.ExecutionId == setup.Execution.Id);
+        Assert.Equal("cli", turn.BillingMode);
         Assert.Null(turn.EstimatedCostUsd);
         Assert.True(turn.ReservedUsd > 0);
+    }
+
+    [Fact]
+    public async Task HistoricalMeteredTurnWithoutKnownCostStillBlocksRetryAsync()
+    {
+        var model = new FixtureModel();
+        using var setup = await SetupAsync(model);
+        using (var scope = setup.Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.ModelTurns.Add(new ModelTurn
+            {
+                ExecutionId = setup.Execution.Id,
+                OperationId = Guid.NewGuid(),
+                OrganizationId = setup.Project.OrganizationId,
+                ProjectId = setup.Project.Id,
+                Attempt = 1,
+                Sequence = 5,
+                RequestHash = new string('c', 64),
+                BillingMode = "api",
+                State = "completed"
+            });
+            await db.SaveChangesAsync();
+        }
+        using var blocked = await setup.Runner.PostAsJsonAsync(setup.Path + "/model-turn",
+            new ModelTurnInput(setup.Lease, Guid.NewGuid(), 0, new(["answer.txt"], ["answer.txt"])));
+        Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+        Assert.Equal("model_outcome_uncertain", (await blocked.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        Assert.Equal(0, model.Calls);
     }
 
     [Fact]
@@ -262,7 +278,7 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
         using var setup = await SetupAsync(new FixtureModel { Cost = null });
         using var generated = await setup.Runner.PostAsJsonAsync(setup.Path + "/model-turn",
             new ModelTurnInput(setup.Lease, Guid.NewGuid(), 0, new(["answer.txt"], ["answer.txt"])));
-        Assert.Equal(HttpStatusCode.Conflict, generated.StatusCode);
+        Assert.Null((await generated.ReadAsync<ModelTurnReply>()).EstimatedCostUsd);
         var path = ApiClient.TasksPath(setup.Project) + $"/{setup.Execution.TaskId}/executions/{setup.Execution.Id}/progress";
         using var response = await setup.Human.GetAsync(path);
         var progress = await response.ReadAsync<ExecutionProgress>();
@@ -278,7 +294,7 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
         using var setup = await SetupAsync(model, publisher: publisher);
         var path = ApiClient.TasksPath(setup.Project) + $"/{setup.Execution.TaskId}/executions/{setup.Execution.Id}/publication";
         var config = setup.Factory.Services.GetRequiredService<IConfiguration>();
-        config["GitHub:EnablePublication"] = "true"; // The publisher is the explicit in-memory double, never GitHub.
+        config["Local:EnablePublication"] = "true"; // The publisher is the explicit in-memory double; no Git repository is touched.
         using var premature = await setup.Human.SendAsync(HttpMethod.Post, path, new { });
         Assert.Equal(HttpStatusCode.Conflict, premature.StatusCode);
         Assert.Equal(0, publisher.Calls);
@@ -294,15 +310,11 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
                 Version = repository.ConnectionVersion,
                 OrganizationId = setup.Project.OrganizationId,
                 ProjectId = setup.Project.Id,
-                AppId = 2,
-                InstallationId = 3,
                 RepositoryId = 1,
-                Owner = "fixture",
-                Repository = "repo",
+                Provider = "local",
+                LocalPath = repository.RemoteUrl,
                 BaseBranch = "main",
-                BaseCommit = repository.BaseCommit,
-                ProtectedPrivateKey = scope.ServiceProvider.GetRequiredService<IntegrationSecrets>()
-                    .Protect(setup.Project.OrganizationId, setup.Project.Id, repository.ConnectionId, "github", "fixture-private-key")
+                BaseCommit = repository.BaseCommit
             });
             await db.SaveChangesAsync();
         }
@@ -341,23 +353,20 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
         Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
         Assert.Equal(2, publisher.Calls);
     }
-    private async Task<Scenario> SetupAsync(FixtureModel model, decimal budget = 5m, IGitPublisher? publisher = null)
+    // model == null keeps the real Codex adapter so a test can point it at the CLI fixture executable.
+    private async Task<Scenario> SetupAsync(FixtureModel? model, decimal budget = 5m, IGitPublisher? publisher = null, decimal inputUsd = 1m, decimal outputUsd = 1m)
     {
         var factory = fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
                 {
-                    services.RemoveAll<ITextModel>(); services.AddSingleton<ITextModel>(model);
+                    if (model is not null) { services.RemoveAll<ITextModel>(); services.AddSingleton<ITextModel>(model); }
                     if (publisher is not null) { services.RemoveAll<IGitPublisher>(); services.AddSingleton(publisher); }
                 }));
         var human = factory.CreateClient();
         await human.RegisterAsync();
         var project = await human.CreateProjectAsync();
         var config = factory.Services.GetRequiredService<IConfiguration>();
-        config["OpenAI:EnableRequests"] = "true"; // This Testing host replaces the provider with the explicit double above.
-        config[$"Integrations:{project.OrganizationId:D}:{project.Id:D}:OpenAI:ApiKey"] = "fixture-model-secret";
-        using var profileResponse = await human.SendAsync(HttpMethod.Post,
-            $"/api/v1/organizations/{project.OrganizationId}/projects/{project.Id}/profiles/",
-            new ProfileInput("Fixture", "fixture-model", 65536, 16, 5, 1m, 1m));
-        var profile = await profileResponse.ReadAsync<ProfileDto>();
+        config["Codex:EnableRequests"] = "true"; // Either the explicit double above or the CLI fixture replaces the real CLI.
+        var profile = await factory.Services.SeedProfileAsync(project, "Fixture", inputUsd, outputUsd);
         var task = await human.CreateTaskAsync(project);
         var taskPath = ApiClient.TasksPath(project) + $"/{task.Id}";
         using var analysis = await human.SendAsync(HttpMethod.Post, taskPath + "/transition", new TransitionInput(TaskStage.Analysis, task.Version));
@@ -369,7 +378,7 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
         var execution = await schedule.ReadAsync<ExecutionDto>();
         using (var scope = factory.Services.CreateScope())
         {
-            var source = new RepositorySnapshot(Guid.NewGuid(), Guid.NewGuid(), 1, "https://github.com/fixture/repo.git", "main", new string('a', 40), $"teamflow/{execution.Id:N}");
+            var source = new RepositorySnapshot(Guid.NewGuid(), Guid.NewGuid(), 1, Path.GetFullPath("fixture-repository"), "main", new string('a', 40), $"teamflow/{execution.Id:N}", Path.GetFullPath("fixture-repository"));
             await scope.ServiceProvider.GetRequiredService<AppDbContext>().Executions.Where(e => e.Id == execution.Id)
                 .ExecuteUpdateAsync(s => s.SetProperty(e => e.RepositorySnapshot, JsonSerializer.Serialize(source, ApiClient.JsonOptions)));
         }
@@ -397,17 +406,16 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
         private PublishedPullRequest? _receipt;
         public int Calls { get; private set; }
         public int PrCreates { get; private set; }
-        public Task<PublishedPullRequest> PublishAsync(GitConnection connection, string privateKey, PublicationPlan plan, CancellationToken ct)
+        public Task<PublishedPullRequest> PublishAsync(GitConnection connection, PublicationPlan plan, CancellationToken ct)
         {
             Calls++;
             Assert.Single(plan.Files);
             Assert.Equal("42", plan.Files[0].Content);
             Assert.Contains("Checkpoint:", plan.Body);
-            Assert.DoesNotContain(privateKey, plan.Body);
             if (_receipt is null)
             {
                 PrCreates++;
-                _receipt = new(7, "https://github.com/fixture/repo/pull/7", plan.BaseCommit, new string('b', 40), plan.Branch);
+                _receipt = new(1, $"/api/v1/organizations/{connection.OrganizationId}/projects/{connection.ProjectId}/repository/local/reviews/{plan.ExecutionId}", plan.BaseCommit, new string('b', 40), plan.Branch);
                 throw new TeamFlow.Api.Http.ApiException(502, "git_unavailable", "Fixture response lost after effect.");
             }
             return Task.FromResult(_receipt);
@@ -420,11 +428,10 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
         public string Text { get; set; } = "{\"tool\":\"read\",\"path\":\"answer.txt\"}";
         public decimal? Cost { get; init; } = 0.001m;
         public Func<CancellationToken, Task>? BeforeReply { get; init; }
-        public async Task<TextModelResult> GenerateAsync(AgentProfile profile, string apiKey, string prompt, decimal budgetUsd, CancellationToken ct)
+        public async Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budgetUsd, CancellationToken ct)
         {
             Interlocked.Increment(ref _calls);
             Assert.Contains("untrusted data", prompt);
-            Assert.DoesNotContain(apiKey, prompt);
             if (BeforeReply is not null) await BeforeReply(ct);
             return new(Text, Cost is null ? null : 100, Cost is null ? null : 10, Cost);
         }
