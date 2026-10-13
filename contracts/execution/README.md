@@ -37,7 +37,7 @@ Não há exactly-once. Commit, upload e PR usam operationId e consulta do efeito
 Claim e heartbeat estão implementados; T16 acrescenta escrita/leitura de checkpoints. Resultados e operações de modelo estão implementados na T16; recuperação está implementada na T17. Progresso público deriva dos checkpoints na T18. Autenticação Bearer separada de sessão humana; escopo deriva da credencial, não do payload. Claim retorna 204 ou envelope conforme execution-message.schema.json. `repository` e `agentProfileId` são opcionais/null quando não configurados. T14 inclui snapshot de conexão/versão/URL/base/branch; T15 inclui o perfil escolhido, sempre limitado ao projeto. RunnerClient valida versão, escopo, posse, prazos e limites sem importar a aplicação backend.
 ## Checkout T14
 
-POST /internal/v1/executions/{id}/repository-token recebe leaseToken e devolve token temporário com expiresAt somente ao runner autenticado. Revalida escopo, credencial ativa, posse e conexão após a emissão. Token não integra o envelope nem o snapshot. Base e branch são fixadas no agendamento e verificadas pelo checkout; resultados/checkpoints são registrados pelo harness no protocolo durável.
+POST /internal/v1/executions/{id}/repository-token recebe leaseToken e devolve o CheckoutGrant `local` com expiresAt somente ao runner autenticado, sem credencial. Revalida escopo, credencial ativa, posse, conexão e que a branch base ainda aponta o commit do snapshot. O grant não integra o envelope nem o snapshot. Base e branch são fixadas no agendamento e verificadas pelo checkout; resultados/checkpoints são registrados pelo harness no protocolo durável.
 
 ## Checkpoints T16
 

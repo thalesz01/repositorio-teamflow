@@ -6,7 +6,7 @@
   },
   "servers": [
     {
-      "url": "http://localhost:5080/"
+      "url": "http://localhost:15081/"
     }
   ],
   "paths": {
@@ -2803,7 +2803,7 @@
         }
       }
     },
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/repository": {
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/repository/local": {
       "post": {
         "tags": [
           "Repository connection"
@@ -2832,7 +2832,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GitInput"
+                "$ref": "#/components/schemas/LocalRepositoryInput"
               }
             }
           },
@@ -2850,7 +2850,9 @@
             }
           }
         }
-      },
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/repository": {
       "get": {
         "tags": [
           "Repository connection"
@@ -2918,55 +2920,6 @@
         "responses": {
           "200": {
             "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/repository/local": {
-      "post": {
-        "tags": [
-          "Repository connection"
-        ],
-        "parameters": [
-          {
-            "name": "organizationId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "projectId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LocalRepositoryInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GitDto"
-                }
-              }
-            }
           }
         }
       }
@@ -3044,22 +2997,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/InstallationToken"
+                  "$ref": "#/components/schemas/CheckoutGrant"
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/webhooks/github": {
-      "post": {
-        "tags": [
-          "Webhooks"
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
           }
         }
       }
@@ -3140,7 +3081,7 @@
         }
       }
     },
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/profiles": {
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/profiles/codex": {
       "post": {
         "tags": [
           "Agent profiles"
@@ -3165,29 +3106,14 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProfileInput"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileDto"
-                }
-              }
-            }
+            "description": "OK"
           }
         }
-      },
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/profiles": {
       "get": {
         "tags": [
           "Agent profiles"
@@ -3246,38 +3172,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/profiles/codex": {
-      "post": {
-        "tags": [
-          "Agent profiles"
-        ],
-        "parameters": [
-          {
-            "name": "organizationId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "projectId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
           }
         }
       }
@@ -3478,10 +3372,22 @@
             ],
             "format": "double",
             "default": 1
+          }
+        }
+      },
+      "CheckoutGrant": {
+        "required": [
+          "token",
+          "expiresAt"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
           },
-          "semantic": {
-            "type": "boolean",
-            "default": false
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -4150,43 +4056,6 @@
           }
         }
       },
-      "GitInput": {
-        "required": [
-          "installationId",
-          "repositoryId",
-          "owner",
-          "repository",
-          "baseBranch"
-        ],
-        "type": "object",
-        "properties": {
-          "installationId": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int64"
-          },
-          "repositoryId": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int64"
-          },
-          "owner": {
-            "type": "string"
-          },
-          "repository": {
-            "type": "string"
-          },
-          "baseBranch": {
-            "type": "string"
-          }
-        }
-      },
       "HeartbeatInput": {
         "required": [
           "leaseToken"
@@ -4353,22 +4222,6 @@
               "string"
             ],
             "format": "double"
-          }
-        }
-      },
-      "InstallationToken": {
-        "required": [
-          "token",
-          "expiresAt"
-        ],
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string"
-          },
-          "expiresAt": {
-            "type": "string",
-            "format": "date-time"
           }
         }
       },
@@ -5399,66 +5252,6 @@
           }
         }
       },
-      "ProfileInput": {
-        "required": [
-          "name",
-          "model",
-          "maxInputBytes",
-          "maxOutputTokens",
-          "timeoutSeconds",
-          "inputUsdPerMillionTokens",
-          "outputUsdPerMillionTokens"
-        ],
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "model": {
-            "type": "string"
-          },
-          "maxInputBytes": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
-          "maxOutputTokens": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
-          "timeoutSeconds": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
-          "inputUsdPerMillionTokens": {
-            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
-            "type": [
-              "number",
-              "string"
-            ],
-            "format": "double"
-          },
-          "outputUsdPerMillionTokens": {
-            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
-            "type": [
-              "number",
-              "string"
-            ],
-            "format": "double"
-          }
-        }
-      },
       "ProgressEvent": {
         "required": [
           "eventId",
@@ -5961,20 +5754,6 @@
           "query": {
             "type": "string"
           },
-          "vector": {
-            "type": [
-              "null",
-              "array"
-            ],
-            "items": {
-              "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
-              "type": [
-                "number",
-                "string"
-              ],
-              "format": "float"
-            }
-          },
           "maxBytes": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
@@ -6233,9 +6012,6 @@
     },
     {
       "name": "Repository connection"
-    },
-    {
-      "name": "Webhooks"
     },
     {
       "name": "Agent profiles"
