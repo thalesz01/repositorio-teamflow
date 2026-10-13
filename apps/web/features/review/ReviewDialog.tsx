@@ -24,11 +24,24 @@ export function ReviewDialog({ scope, onClose, onChanged }: { scope: DiffScope; 
   const { data, error, reload } = useDiff(scope);
   const [comments, setComments] = useState<DiffComment[]>([]);
   const [general, setGeneral] = useState("");
+  const [summary, setSummary] = useState<string | null>(null);
   const [busy, setBusy] = useState<"fix" | "complete" | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const idempotency = useRef<{ text: string; key: string } | null>(null);
   const taskPath = `/organizations/${scope.organizationId}/projects/${scope.projectId}/tasks/${scope.taskId}`;
   useEffect(() => { const element = dialog.current; element?.showModal(); return () => element?.close(); }, []);
+  // The agent closes each execution with a note on what it did and what it could not do; without it the person only sees the diff.
+  useEffect(() => {
+    const controller = new AbortController();
+    async function load() {
+      try {
+        const progress = await api<Schema["ExecutionProgress"]>(`${taskPath}/executions/${scope.executionId}/progress`, { signal: controller.signal });
+        if (!controller.signal.aborted) setSummary(progress.agentSummary ?? null);
+      } catch { /* the summary is optional; the diff and the decisions do not depend on it */ }
+    }
+    void load();
+    return () => controller.abort();
+  }, [taskPath, scope.executionId]);
   // Publication runs in the background right after the tests pass; keep asking until the changes are readable.
   const waiting = !!error && error.includes("ainda não foram publicadas");
   useEffect(() => {
@@ -71,6 +84,7 @@ export function ReviewDialog({ scope, onClose, onChanged }: { scope: DiffScope; 
         : error ? <section className="diff-empty" role="alert"><h2>Não foi possível abrir a revisão</h2><p>{error}</p><button onClick={reload}>Tentar novamente</button></section>
           : !data ? <p role="status" className="loading-line"><span className="spinner" aria-hidden="true" />Buscando os arquivos e commits desta execução…</p>
             : <>
+              {summary && <section className="agent-note" aria-label="Resumo do agente"><h3>O que o agente informou</h3><p>{summary}</p></section>}
               <p className="hint">Passe o mouse sobre uma linha e use <strong>+</strong> para dizer o que precisa mudar. Quando estiver tudo certo, conclua.</p>
               <DiffViewer data={data} commenting={{ comments, onAdd: comment => setComments(items => [...items, { ...comment, id: crypto.randomUUID() }]),
                 onRemove: id => setComments(items => items.filter(item => item.id !== id)) }} />

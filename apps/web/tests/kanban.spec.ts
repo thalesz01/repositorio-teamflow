@@ -54,6 +54,7 @@ test("criar, executar, corrigir com comentários e concluir", async ({ page }) =
   await page.route(`**${projectPath}/tasks/${task.id}`, route => route.fulfill({ json: { ...task, stage: "review", allowedTransitions: [] } }));
   await page.route(`**${executionPath}/publication`, route => route.fulfill({ json: { state: "published", attempts: 1, failureCode: null, pullRequest: {
     number: 7, url: `${projectPath}/repository/local/reviews/${execution.id}`, baseCommit: "a".repeat(40), headCommit: "b".repeat(40), branch: "teamflow/fixture" } } }));
+  await page.route(`**${executionPath}/progress`, route => route.fulfill({ json: { execution, estimatedCostUsd: null, inputTokens: null, outputTokens: null, events: [], nextCursor: null, agentSummary: "Feito, mas faltou criar o arquivo de rotas." } }));
   await page.route(`**${projectPath}/repository/local/reviews/${execution.id}`, route => route.fulfill({ contentType: "text/plain", body: diff }));
   await page.getByRole("button", { name: "Atualizar quadro", exact: true }).click();
   await expect(card("Corrigir")).toBeVisible();
@@ -69,6 +70,7 @@ test("criar, executar, corrigir com comentários e concluir", async ({ page }) =
   const review = page.getByRole("dialog", { name: /^Revisão/ });
   const table = review.getByRole("table", { name: "Diff de add.sh" });
   await expect(table).toContainText("echo $(($1 + $2))");
+  await expect(review.getByRole("region", { name: "Resumo do agente" })).toContainText("faltou criar o arquivo de rotas");
   await expect(review.getByRole("button", { name: /^Corrigir/ })).toBeDisabled();
   await table.getByRole("button", { name: "Comentar a linha 2 de add.sh" }).click();
   await review.getByLabel("Comentário para a linha 2").fill("Use uma variável com nome claro.");

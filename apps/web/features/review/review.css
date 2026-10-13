@@ -130,3 +130,8 @@
 .review-foot-row .spacer { flex: 1; }
 .review-foot .count { color: var(--text-3); font-size: 13px; }
 @media (max-width: 640px) { .review-foot { padding: 10px 14px; } }
+
+/* The agent's closing note, so a partial result is never a surprise. */
+.agent-note { padding: 12px 14px; background: var(--info-soft); border: 1px solid color-mix(in srgb, var(--info) 25%, transparent); border-radius: var(--radius); }
+.agent-note h3 { margin: 0 0 4px; font-size: 13px; color: var(--info); }
+.agent-note p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }

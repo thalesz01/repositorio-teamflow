@@ -6,6 +6,12 @@ API, frontend e runner são processos independentes. Ter Codex autenticado não 
 
 `./scripts/Setup-Runner.ps1 -OrganizationId <uuid> -ProjectId <uuid>` prepara o runner de um projeto (política em `policy.json`, credencial DPAPI) e `./scripts/Start-TeamFlow.ps1` inicia banco, API, web e um runner por projeto configurado. Ambos funcionam no Windows PowerShell 5.1 e no 7. Detalhes em [local-development.md](local-development.md). O quadro indica se o runner está ativo (`GET .../runners/status`, visível a qualquer membro; online = consulta à fila nos últimos 60 s). Os passos abaixo são o roteiro manual equivalente.
 
+## Criar arquivos novos (`create`)
+
+`readable` e `editable` listam arquivos que já existem. Para o agente **adicionar** arquivos (por exemplo, um arquivo só com as rotas), a política aceita `create`: padrões glob como `**/*.cs`. Um arquivo novo só é aceito se o caminho casar com um padrão, a escrita usar `expectedHash=missing`, o arquivo ainda não existir e o caminho não passar por pasta oculta, `bin`, `obj` ou `node_modules`. No máximo 20 arquivos por execução; o agente pode reler e reescrever o que ele mesmo criou. Arquivos existentes continuam exigindo o caminho exato em `editable`. A API repete a checagem do padrão antes de aceitar a ação do modelo. Sem `create`, nada novo pode ser criado e o agente avisa isso no resumo da execução.
+
+O agente encerra cada execução com um resumo do que fez e do que a política o impediu de fazer; ele aparece no modal de revisão ("O que o agente informou").
+
 ## Política por pasta
 
 Cada tarefa leva a sua pasta. O `controller.json` aceita `folders`: um mapa de caminho absoluto para `{ policy, sandbox }`. O runner compara o caminho da pasta da execução reivindicada com essas chaves (sem diferenciar maiúsculas no Windows) e usa a política e a imagem do sandbox da entrada; sem entrada usa `policy` e `sandbox`. O arquivo é relido a cada execução, então basta salvar para valer. `./scripts/Setup-Runner.ps1 ... -Folder <caminho> -PolicyPath <arquivo>` faz isso. O caminho vem da execução agendada pela API, nunca do conteúdo do repositório.

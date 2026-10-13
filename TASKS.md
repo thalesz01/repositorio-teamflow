@@ -41,7 +41,7 @@ Referência: commit/PR quando houver, ou entrega local sem commit
 | Memória | T21–T24 | Conhecimento com fontes, recuperação e portabilidade |
 | Piloto | T25 | Fluxo completo validado com limites explícitos |
 
-Próximo passo: nenhum item obrigatório pendente. T01–T40 estão concluídas. Esta ordem não autoriza trabalho paralelo automaticamente.
+Próximo passo: nenhum item obrigatório pendente. T01–T41 estão concluídas. Esta ordem não autoriza trabalho paralelo automaticamente.
 
 ## Tarefas
 
@@ -614,3 +614,13 @@ Por decisão explícita do responsável, a T25 passa a exigir smoke de Codex CLI
 - Conclusão 2026-10-13: API — `POST /api/v1/workspace`; `TaskInput.FolderPath/BaseBranch/Stage`; `WorkItem.RepositoryConnectionId/FolderPath/BaseBranch`; `GitConnection.ForTasks` (uma conexão por pasta e branch, índices únicos filtrados); `RepositoryAccess.EnsureTaskFolderAsync` e atualização do commit base a cada execução; `Local:SingleUser`; `POST .../review/complete`; limite de ajustes 6000; autorização de pastas com fallback global; provisionamento do runner sem pasta prévia; migração `TaskFolders`. Runner — `FolderProfile` por pasta (`controller.json` `folders`, relido por execução). Web — quadro de quatro colunas, `NewTaskDialog` (seletor de pasta e branch), `ReviewDialog` com comentários por linha (`+` no diff), "Concluir"; removidos seletor de equipe/projeto, Configurações, Demandas, `PublicationPanel` e `IntegrationPanel`. Scripts — `Setup-Runner.ps1 -Folder`.
 - Validação: `dotnet test` API 73/73 e Runner 32/32 (PostgreSQL, Git e Docker reais; testes novos de espaço pessoal, pasta por tarefa com commit base atualizado, `complete` com e sem `SingleUser` e política por pasta); `dotnet format --verify-no-changes` nos quatro projetos; `tsc --noEmit`, `eslint .` e `next build`; Playwright 9/9 contra build de produção com API e banco isolados (criação com seletor de pasta real, fila, comentário em linha enviado como ajuste, conclusão); `Setup-Runner.ps1 -Folder` no PowerShell 5.1 real; capturas do quadro e do modal de revisão.
 - Limitações: revisão, publicação e `complete` no e2e usam respostas simuladas (o caminho real tem testes de API com Git real); nenhuma execução real do Codex foi feita neste trabalho. Duas tarefas na mesma pasta disputam a branch base: a segunda a concluir pode receber `base_changed`. A política padrão do runner pode não servir a uma pasta nova; sem entrada em `folders` a execução falha de forma explícita. A tela Demandas e as Configurações saíram da interface (a API continua); tarefas e projetos antigos ficam acessíveis só se forem o espaço escolhido. Sem leitor de tela real.
+
+### [x] T41 — Observações de correção atendidas e resumo do agente visível
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-13
+- Escopo: uma correção pediu um arquivo novo de rotas e o agente só aplicou o comentário da linha, porque a política do runner não permitia criar arquivos; o aviso estava só na mensagem final, que não aparecia na tela.
+- Critérios: política com padrões de criação, checada no runner e na API; resumo do agente visível na revisão; limites seguros (sem existentes, ocultos, `bin`/`obj`, no máximo 20).
+- Conclusão 2026-10-13: `RunnerToolPolicy.Create` e `AgentToolPolicy.Create` (glob, repetido na API por `ToolPathPattern`); `WorkspaceTools.MayCreate` com limites e releitura de arquivos criados; o prompt pede um resumo ao finalizar; `ExecutionProgress.AgentSummary` (até 2000 caracteres); modal de revisão mostra "O que o agente informou". Política padrão do projeto Teste recebeu `create: ["**/*.cs"]`.
+- Validação: `dotnet test` API 74/74 e Runner 33/33 (novos: criação por padrão com negativas para existentes, ocultos, `bin`, travessia, limite de 20 e sem hash; ação do modelo por padrão e resumo no progresso); `dotnet format` limpo; `tsc`, `eslint`, build e Playwright 9/9 (resumo exibido no modal). O teste de orçamento de modelo foi reajustado (preço de saída 0.9) porque o prompt ficou maior.
+- Limitações: nenhuma execução real com o Codex foi feita para confirmar que o modelo passa a criar o arquivo; a primeira correção real depois desta mudança é a evidência. O resumo é texto livre do modelo, exibido como texto simples e não prova que o pedido foi cumprido.

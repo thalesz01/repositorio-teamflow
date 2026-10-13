@@ -2655,6 +2655,7 @@ export interface components {
         AgentToolPolicy: {
             readable: string[];
             editable: string[];
+            create?: null | string[];
         };
         AnalysisDto: {
             /** Format: uuid */
@@ -2841,6 +2842,7 @@ export interface components {
             outputTokens: null | number | string;
             events: components["schemas"]["ProgressEvent"][];
             nextCursor: null | string;
+            agentSummary?: null | string;
         };
         ExecutionResultInput: {
             /** Format: uuid */
