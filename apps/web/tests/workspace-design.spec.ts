@@ -13,7 +13,7 @@ test("busca por descrição preserva tarefas e quadro cabe no celular", async ({
   await page.getByLabel("Novo projeto", { exact: true }).fill("Workspace design");
   await page.getByRole("button", { name: "Criar projeto", exact: true }).click();
   const navigation = page.getByRole("navigation", { name: "Navegação do projeto" });
-  await expect(page.getByRole("region", { name: "Nova tarefa", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Nova tarefa", exact: true })).toHaveCount(0);
   await navigation.getByRole("button", { name: "Demandas", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Analisar demandas", exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Quadro de tarefas", exact: true })).toBeHidden();
@@ -25,18 +25,21 @@ test("busca por descrição preserva tarefas e quadro cabe no celular", async ({
   await expect(demand).toHaveValue("Rascunho que precisa ser preservado");
   await navigation.getByRole("button", { name: "Quadro", exact: true }).click();
   await page.getByRole("button", { name: "Nova tarefa", exact: true }).click();
-  const editor = page.getByRole("region", { name: "Nova tarefa", exact: true });
+  const editor = page.getByRole("dialog", { name: "Nova tarefa", exact: true });
   await editor.getByLabel("Título", { exact: true }).fill("Melhorar checkout");
   await editor.getByLabel("Descrição", { exact: true }).fill("Corrigir arredondamento financeiro.");
   await editor.getByRole("button", { name: "Criar tarefa", exact: true }).click();
+  // The panel switches to the saved task before it can be closed.
+  await expect(page.getByRole("dialog", { name: "Melhorar checkout", exact: true }).getByRole("form", { name: "Detalhe da tarefa", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Fechar detalhe", exact: true }).click();
   const lane = page.getByRole("region", { name: "Entrada", exact: true });
-  const card = lane.getByRole("button", { name: "Melhorar checkout", exact: true });
+  const card = lane.getByRole("button", { name: "Abrir tarefa Melhorar checkout", exact: true });
   await expect(card).toBeVisible();
   await page.getByLabel("Buscar tarefas", { exact: true }).fill("FINANCEIRO");
   await expect(card).toBeVisible();
   await page.getByLabel("Buscar tarefas", { exact: true }).fill("inexistente");
   await expect(card).toHaveCount(0);
-  await expect(page.getByRole("status").filter({ hasText: "0 de 1 tarefa(s)" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "0 de 1 no filtro" })).toBeVisible();
   await page.getByLabel("Buscar tarefas", { exact: true }).fill("");
   await expect(card).toBeVisible();
   await page.setViewportSize({ width: 375, height: 812 });

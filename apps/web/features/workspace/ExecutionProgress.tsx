@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { PublicationPanel } from "./PublicationPanel";
+import { Alert } from "./ui";
 import { api, errorMessage, type Schema } from "./api";
 
 type Progress = Schema["ExecutionProgress"];
@@ -9,6 +10,7 @@ type Event = Schema["ProgressEvent"];
 const stateLabels: Record<Schema["ExecutionState"], string> = {
   queued: "Na fila", leased: "Em execução", succeeded: "Testes concluídos", failed: "Falhou", cancelled: "Cancelada",
 };
+const toolLabels: Record<string, string> = { read: "Leitura", write: "Escrita", test: "Testes" };
 
 export function ExecutionProgress({ path, showPublication = true }: { path: string; showPublication?: boolean }) {
   const [progress, setProgress] = useState<Progress | null>(null);
@@ -55,21 +57,21 @@ export function ExecutionProgress({ path, showPublication = true }: { path: stri
     return () => { controller.abort(); source?.close(); };
   }, [path]);
 
-  return <section aria-label="Progresso da execução">
-    <p role="status">{connection}</p>
-    {error && <p className="error" role="alert">{error}</p>}
-    {progress && <>
-      <p>{stateLabels[progress.execution.state]} · tentativa {progress.execution.attempt}</p>
-      <p>Custo estimado: {progress.estimatedCostUsd === null ? "desconhecido" : `US$ ${Number(progress.estimatedCostUsd).toFixed(6)}`}</p>
-      {progress.execution.failureCode && <p>Motivo: {progress.execution.failureCode}</p>}
-    </>}
-    {!events.length && <p>Aguardando o primeiro checkpoint.</p>}
-    <ol>{events.map(event => <li key={event.eventId}>
-      <time dateTime={event.timestamp}>{new Date(event.timestamp).toLocaleTimeString()}</time>
-      {` · tentativa ${event.attempt} · ${event.tool ?? "Início"}${event.path ? ` · ${event.path}` : ""}`}
-      {event.succeeded !== null && (event.succeeded ? " · passou" : " · falhou")}
-      <a href={`/api/v1${path}/reports/${event.eventId}`}> Relatório</a>
-      {event.hash && <small> · hash {event.hash.slice(0, 12)}</small>}
+  return <section aria-label="Progresso da execução" className="progress">
+    <div className="progress-meta">
+      <span role="status">{connection}</span>
+      {progress && <>
+        <span>{stateLabels[progress.execution.state]} · tentativa {progress.execution.attempt}</span>
+        <span>Custo estimado: {progress.estimatedCostUsd === null ? "desconhecido" : `US$ ${Number(progress.estimatedCostUsd).toFixed(6)}`}</span>
+        {progress.execution.failureCode && <span>Motivo: {progress.execution.failureCode}</span>}
+      </>}
+    </div>
+    {error && <Alert>{error}</Alert>}
+    {!events.length && <p className="hint" style={{ marginTop: 12 }}>Aguardando o primeiro checkpoint.</p>}
+    <ol className="timeline">{events.map(event => <li key={event.eventId} data-ok={event.succeeded === null ? undefined : String(event.succeeded)}>
+      <span className="what">{event.tool ? toolLabels[event.tool] ?? event.tool : "Início"}{event.path ? ` · ${event.path}` : ""}{event.succeeded !== null && (event.succeeded ? " · passou" : " · falhou")}</span>
+      <span className="when"><time dateTime={event.timestamp}>{new Date(event.timestamp).toLocaleTimeString()}</time> · tentativa {event.attempt}
+        {event.hash && <> · hash {event.hash.slice(0, 12)}</>} · <a href={`/api/v1${path}/reports/${event.eventId}`}>Relatório</a></span>
     </li>)}</ol>
     {showPublication && progress?.execution.state === "succeeded" && <PublicationPanel path={path} />}
     <p className="hint">Checkpoints e métricas persistidos. Conteúdo de arquivos e saídas livres das ferramentas não são exibidos.</p>

@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { api, ApiError, errorMessage, type TaskItem, type Schema } from "../workspace/api";
+import { api, ApiError, errorMessage, stageLabels, type TaskItem, type Schema } from "../workspace/api";
 import { ReviewPanel } from "../workspace/ReviewPanel";
+import { BrandMark, Icon } from "../workspace/ui";
 import { parseUnifiedDiff, type DiffFile } from "./unified-diff";
 import "./review.css";
 
@@ -48,11 +49,14 @@ export function DiffReview({ organizationId, projectId, taskId, executionId }: S
   const file = data?.files[selected];
   const additions = data?.files.reduce((sum, item) => sum + item.additions, 0) ?? 0;
   const deletions = data?.files.reduce((sum, item) => sum + item.deletions, 0) ?? 0;
-  return <div className="diff-review">
-    <div className="diff-breadcrumb"><Link href="/">← Voltar ao quadro</Link><span>Revisão de código</span></div>
+  return <div className="review-page">
+    <header className="review-topbar"><Link className="sidebar-brand" href="/"><BrandMark size={28} /><span>TeamFlow</span></Link>
+      <span className="crumb" aria-hidden="true">/</span><span className="crumb">Revisão de código</span>
+      <Link className="back" href="/"><Icon name="arrowLeft" size="sm" />Voltar ao quadro</Link></header>
+    <main id="workspace" className="diff-review">
     {error ? <section className="diff-empty" role="alert"><h1>Não foi possível abrir a revisão</h1><p>{error}</p><button onClick={() => { setError(null); setRetry(value => value + 1); }}>Tentar novamente</button><Link href="/">Entrar ou selecionar outro projeto</Link></section>
       : !data ? <section className="diff-empty" role="status"><h1>Carregando alterações…</h1><p>Buscando os commits e arquivos desta execução.</p></section> : <>
-      <header className="diff-heading"><div><p className="eyebrow">Alterações da execução</p><h1>{data.task.title}</h1><p className="hint">Confira o que mudou antes de aprovar este commit.</p></div><span className="diff-badge">Pronta para revisão</span></header>
+      <header className="diff-heading"><div><p className="eyebrow">Alterações da execução</p><h1>{data.task.title}</h1><p className="page-description">Confira o que mudou antes de aprovar este commit.</p></div><span className={`badge ${data.task.stage === "done" ? "success" : "info"}`}>{data.task.stage === "done" ? "Concluída" : ["review", "awaitingMerge"].includes(data.task.stage) ? "Pronta para revisão" : stageLabels[data.task.stage]}</span></header>
       <div className="diff-summary"><div><span>Arquivos alterados</span><strong>{data.files.length}</strong></div><div><span>Linhas adicionadas</span><strong className="diff-positive">+{additions}</strong></div><div><span>Linhas removidas</span><strong className="diff-negative">−{deletions}</strong></div><div className="diff-commits"><span>Base → Alterações</span><code title={`${data.receipt.baseCommit} → ${data.receipt.headCommit}`}>{data.receipt.baseCommit.slice(0, 8)} → {data.receipt.headCommit.slice(0, 8)}</code></div></div>
       <details className="diff-context"><summary>Objetivo e critérios de aceitação</summary><p>{data.task.description}</p><ul>{data.task.acceptanceCriteria.map((criterion, index) => <li key={index}>{criterion}</li>)}</ul></details>
       <div className="diff-layout"><aside className="diff-files"><div className="diff-files-heading"><h2>Arquivos</h2><span>{data.files.length}</span></div><label className="diff-search">Filtrar arquivos<input type="search" placeholder="Buscar pelo nome…" value={search} onChange={event => setSearch(event.target.value)} /></label><nav aria-label="Arquivos alterados">
@@ -63,7 +67,8 @@ export function DiffReview({ organizationId, projectId, taskId, executionId }: S
           {file.binary ? <p className="diff-empty">Arquivo binário alterado. A comparação textual não está disponível.</p> : !file.lines.length ? <p className="diff-empty">Alteração de nome, permissões ou arquivo vazio; sem linhas modificadas.</p> : <div className="diff-code-scroll"><table className="diff-code" aria-label={`Diff de ${file.path}`}><thead><tr><th scope="col">Antes</th><th scope="col">Depois</th><th scope="col" aria-label="Tipo de alteração" /><th scope="col">Código</th></tr></thead><tbody>{file.lines.filter(line => !changesOnly || line.kind !== "context").map((line, index) => line.kind === "hunk" || line.kind === "meta" ? <tr key={index} className={`diff-line-${line.kind}`}><td colSpan={4}><code>{line.text}</code></td></tr> : <tr key={index} className={`diff-line-${line.kind}`}><td className="diff-line-number">{line.before}</td><td className="diff-line-number">{line.after}</td><td className="diff-line-sign" aria-label={line.kind === "added" ? "Adição" : line.kind === "removed" ? "Remoção" : "Contexto"}>{line.kind === "added" ? "+" : line.kind === "removed" ? "−" : " "}</td><td><code>{line.text || " "}</code></td></tr>)}</tbody></table></div>}
         </> : <div className="diff-empty"><h2>Nenhum diff textual encontrado</h2><p>Confira a publicação e o commit desta execução.</p></div>}
       </section></div>
-      <section className="diff-decision"><div><p className="eyebrow">Próxima etapa</p><h2>Revise, aprove ou solicite ajustes</h2><p className="hint">Branch: <code>{data.receipt.branch}</code>. A pasta original recebe as alterações após o merge.</p></div><ReviewPanel path={executionPath} local /></section>
+      <section className="diff-decision"><div><p className="eyebrow">Próxima etapa</p><h2>Revise, aprove ou solicite ajustes</h2><p className="hint">Branch: <code>{data.receipt.branch}</code>. A pasta original recebe as alterações após o merge.</p></div><ReviewPanel path={executionPath} /></section>
     </>}
+    </main>
   </div>;
 }

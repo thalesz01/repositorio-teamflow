@@ -22,7 +22,7 @@ Kanban conectado à API, com cadastro/login, seleção/criação de equipe e pro
 
 ## Configuração de integrações
 
-No quadro, selecione o perfil para novas execuções. Proprietário pode abrir Configurar integrações para conectar GitHub e criar/revogar perfis OpenAI. Credenciais e autorização são configuradas pelo administrador no backend, nunca pelo bundle/localStorage. Campos de preço são explícitos, sem valor presumido. Consulte [guia](../../docs/integrations.md). O teste integrations.spec.ts cobre falha sem credenciais e ausência de campos de segredo.
+No quadro, selecione o perfil para novas execuções. Proprietário pode abrir Configurar integrações para escolher a pasta do projeto e vincular o Codex da máquina. Autorização de pastas e do CLI é configurada pelo administrador no backend, nunca pelo bundle/localStorage. Consulte [guia](../../docs/integrations.md). O teste integrations.spec.ts cobre a falha clara sem configuração e a ausência de campos de segredo.
 
 O histórico de execuções oferece Ver progresso (checkpoints, SSE, estado/custo e relatório limitado), com deduplicação de IDs na reconexão. Execuções técnicas concluídas mostram o painel de PR e link do recibo confirmado; publicar depende da configuração externa no servidor. Custos desconhecidos permanecem desconhecidos. Encerrar o painel fecha stream/timers e cancela as consultas.
 ## Validação integrada e piloto
@@ -31,17 +31,23 @@ Consultar docs/pilot.md na raiz. O comando scripts/Test-App.ps1 -App web executa
 
 ## Interface do workspace
 
-Design com tokens CSS locais, contraste legível, foco visível e link para pular ao conteúdo. Quadro horizontal com arraste e alternativa por formulário/teclado; busca local por título ou descrição antes da paginação. Indicadores refletem o projeto completo. Equipes e projetos possuem criação recolhida quando já configurados. Ferramentas de análise, memória e integração ficam abaixo do fluxo principal. No modo local, Configure integrações conecta Git local e perfis Codex CLI usando a autenticação instalada; o guia local e ADR 0005 prevalecem sobre a configuração remota legada descrita acima.
+**Sistema de design.** Tokens CSS em `app/globals.css` (neutros, marca, cores semânticas e uma cor por etapa do fluxo), tipografia de sistema, escala de 4 px, componentes base (botões, campos, selos, cartões, alertas, esqueletos) e tema claro/escuro automático por `prefers-color-scheme`. Layout em `app/app.css`; leitor de diff em `features/review/review.css`. Ícones e marca ficam em `features/workspace/ui.tsx`. Não há fonte, imagem ou biblioteca de UI externa.
 
-Responsividade verificada em 375 px; somente as colunas do quadro rolam horizontalmente. Respeitar prefers-reduced-motion e manter labels acessíveis. Não introduzir métricas, controles ou estados de conexão fictícios. workspace-design.spec.ts cobre busca, retorno à criação e ausência de overflow da página autenticada.
+**Estrutura.** Barra lateral única com marca, seletores de Equipe e Projeto (com os botões Adicionar equipe/projeto), navegação (Quadro, Demandas, Memória, Configurações) e conta. Abaixo de 1024 px a barra vira um menu fora da tela, aberto por um botão no topo, com Escape e fundo clicável para fechar. Usuários sem equipe veem o mesmo layout com o convite para criar a primeira.
 
-### Áreas do projeto
+**Quadro.** Cabeçalho com busca, atualização e Nova tarefa; resumo do projeto em uma linha; colunas por etapa com rolagem própria. Etapas vazias recolhem em uma faixa vertical (e reabrem ao arrastar um cartão); Bloqueada, Falhou e Cancelada só aparecem quando têm tarefas. O cartão mostra título, descrição, critérios, dependências e responsável; a ação principal depende da etapa (Executar em Pronta, Revisar alterações em revisão/merge). Arrastar continua disponível, e o mesmo movimento existe por formulário no painel da tarefa, para teclado e leitor de tela.
 
-Navegação por Quadro, Demandas, Memória e Configurações. Apenas a área ativa é exibida; os componentes permanecem montados para preservar rascunhos e a seleção do perfil. Ao trocar de projeto, o estado é reiniciado pelo escopo do componente. O quadro exibe criação/detalhe somente sob demanda, com Fechar detalhe e Escape restaurando o foco ao botão que abriu o painel. Desktop usa menu lateral; celular apresenta as quatro opções em duas linhas. Repositório e perfil de IA possuem blocos separados nas configurações. Atualização da página volta ao quadro; esta navegação local ainda não gera URLs individuais.
+**Painel da tarefa.** Um diálogo modal nativo à direita (foco preso, Escape e clique fora fecham, o foco volta ao cartão) com as abas Detalhes e Execuções. Detalhes tem o formulário (dependências como lista de marcação) e Mover para; Execuções mostra a revisão pronta, o histórico, o cancelamento e o progresso em linha do tempo. Nova tarefa abre o mesmo painel e, depois de salva, ele passa para a tarefa criada.
+
+**Telas.** Demandas (analisar e consultar contexto), Memória (lista de fontes, edição e indexação) e Configurações (pasta e Codex da máquina) usam os mesmos cartões e selos de estado. Todas permanecem montadas para preservar rascunhos. Atualizar a página volta ao quadro; a navegação local ainda não gera URLs.
+
+**Acessibilidade e responsividade.** Foco visível, link para pular ao conteúdo, rótulos associados (dicas ficam fora do `label` e ligadas por `aria-describedby`), estado nunca só por cor, alvos de 44 px em ponteiro grosso e `prefers-reduced-motion` respeitado. Verificado de 375 px a 1440 px, sem rolagem horizontal da página; só o quadro rola na horizontal. Não introduzir métricas, controles ou estados de conexão fictícios.
+
+**Testes de navegador.** `npm run test:e2e` roda contra um build de produção (o servidor de desenvolvimento dispara efeitos duas vezes e quebra mocks de “primeira chamada”). Sem o Chromium do Playwright instalado, use `E2E_BROWSER_CHANNEL=chrome` (ou `msedge`). Para rodar um servidor de desenvolvimento ao lado de um preview, defina `NEXT_DIST_DIR` com outra pasta (`.next-*` é ignorada pelo Git).
 
 ### Seleção e criação de equipe/projeto
 
-A barra de contexto reúne Equipe → Projeto e conta. Os seletores nativos mantêm suporte a teclado e filtram projetos pela equipe selecionada. Ações Adicionar equipe/Adicionar projeto abrem diálogos modais nativos; criar projeto explicita a equipe de destino. Foco inicial no nome, cancelamento/Escape restaura o foco, erros preservam o preenchimento e sucesso seleciona o item criado. Novos usuários recebem estado vazio com próximo passo explícito; criação de projeto continua restrita ao proprietário. No celular, equipe e projeto ficam em linhas próprias para melhorar a leitura dos nomes. context-switcher.spec.ts valida cancelamento, foco, falha de transporte e troca entre duas equipes.
+Os seletores nativos mantêm suporte a teclado e filtram projetos pela equipe selecionada. Adicionar equipe/projeto abre diálogos modais nativos; criar projeto explicita a equipe de destino. Foco inicial no nome, Escape/Cancelar restaura o foco, erros preservam o preenchimento e o sucesso seleciona o item criado. Criar projeto é restrito ao proprietário. `context-switcher.spec.ts` valida cancelamento, foco, falha de transporte e troca entre equipes; `workspace-design.spec.ts` valida busca, retorno à criação e ausência de overflow.
 
 ### Configurações atuais (T32)
 

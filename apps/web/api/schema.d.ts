@@ -2136,6 +2136,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/repository/local": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["LocalRepositoryInput"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GitDto"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organizationId}/projects/{projectId}/repository": {
         parameters: {
             query?: never;
@@ -2174,33 +2216,7 @@ export interface paths {
             };
         };
         put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["GitInput"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["GitDto"];
-                    };
-                };
-            };
-        };
+        post?: never;
         delete: {
             parameters: {
                 query?: never;
@@ -2222,48 +2238,6 @@ export interface paths {
                 };
             };
         };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/repository/local": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["LocalRepositoryInput"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["GitDto"];
-                    };
-                };
-            };
-        };
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2336,41 +2310,8 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["InstallationToken"];
+                        "application/json": components["schemas"]["CheckoutGrant"];
                     };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/webhooks/github": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
                 };
             };
         };
@@ -2440,6 +2381,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/profiles/codex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organizationId}/projects/{projectId}/profiles": {
         parameters: {
             query?: never;
@@ -2474,69 +2451,7 @@ export interface paths {
             };
         };
         put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["ProfileInput"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ProfileDto"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/profiles/codex": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2619,8 +2534,11 @@ export interface components {
              * @default 1
              */
             maxCostUsd: number | string;
-            /** @default false */
-            semantic: boolean;
+        };
+        CheckoutGrant: {
+            token: string;
+            /** Format: date-time */
+            expiresAt: string;
         };
         CheckpointContext: {
             /** Format: int32 */
@@ -2807,15 +2725,6 @@ export interface components {
             /** Format: date-time */
             revokedAt: null | string;
         };
-        GitInput: {
-            /** Format: int64 */
-            installationId: number | string;
-            /** Format: int64 */
-            repositoryId: number | string;
-            owner: string;
-            repository: string;
-            baseBranch: string;
-        };
         HeartbeatInput: {
             /** Format: uuid */
             leaseToken: string;
@@ -2863,11 +2772,6 @@ export interface components {
             idempotencyKey: string;
             /** Format: double */
             maxCostUsd: number | string;
-        };
-        InstallationToken: {
-            token: string;
-            /** Format: date-time */
-            expiresAt: string;
         };
         IssuedRunner: {
             credential: components["schemas"]["RunnerDto"];
@@ -3120,20 +3024,6 @@ export interface components {
             /** Format: date-time */
             revokedAt: null | string;
         };
-        ProfileInput: {
-            name: string;
-            model: string;
-            /** Format: int32 */
-            maxInputBytes: number | string;
-            /** Format: int32 */
-            maxOutputTokens: number | string;
-            /** Format: int32 */
-            timeoutSeconds: number | string;
-            /** Format: double */
-            inputUsdPerMillionTokens: number | string;
-            /** Format: double */
-            outputUsdPerMillionTokens: number | string;
-        };
         ProgressEvent: {
             eventId: string;
             /** Format: uuid */
@@ -3270,7 +3160,6 @@ export interface components {
         };
         SearchInput: {
             query: string;
-            vector?: null | (number | string)[];
             /**
              * Format: int32
              * @default 8192

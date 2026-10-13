@@ -12,31 +12,36 @@ test("cadastro, edição, movimentação por teclado, rejeição e fila", async 
   await page.getByRole("button", { name: "Adicionar projeto", exact: true }).click();
   await page.getByLabel("Novo projeto", { exact: true }).fill("Projeto UI");
   await page.getByRole("button", { name: "Criar projeto", exact: true }).click();
-  await page.getByRole("heading", { name: "Quadro de tarefas" }).waitFor();
+  await page.getByRole("heading", { name: "Quadro", exact: true }).waitFor();
   await page.getByRole("button", { name: "Nova tarefa", exact: true }).click();
-  const editor = page.getByRole("region", { name: "Nova tarefa", exact: true });
-  await editor.getByLabel("Título", { exact: true }).fill("Corrigir frete");
-  await editor.getByLabel("Descrição", { exact: true }).fill("A regra de arredondamento está incorreta.");
-  await editor.getByLabel("Critérios de aceitação", { exact: true }).fill("Frete deve usar duas casas decimais.");
-  await editor.getByRole("button", { name: "Criar tarefa", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Entrada", exact: true }).getByRole("button", { name: "Corrigir frete", exact: true })).toBeVisible();
-  const detail = page.getByRole("region", { name: "Detalhe da tarefa", exact: true });
+  const creator = page.getByRole("dialog", { name: "Nova tarefa", exact: true });
+  await creator.getByLabel("Título", { exact: true }).fill("Corrigir frete");
+  await creator.getByLabel("Descrição", { exact: true }).fill("A regra de arredondamento está incorreta.");
+  await creator.getByLabel("Critérios de aceitação", { exact: true }).fill("Frete deve usar duas casas decimais.");
+  await creator.getByRole("button", { name: "Criar tarefa", exact: true }).click();
+  // The same panel switches to the saved task, so the person keeps their place.
+  const detail = page.getByRole("dialog", { name: "Corrigir frete", exact: true });
+  await expect(detail.getByRole("form", { name: "Detalhe da tarefa", exact: true })).toBeVisible();
   await detail.getByLabel("Título", { exact: true }).fill("Corrigir cálculo do frete");
   await detail.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+  const closeDetail = () => page.getByRole("button", { name: "Fechar detalhe", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Corrigir cálculo do frete", exact: true })).toBeVisible();
+  await closeDetail();
 
+  const card = (lane: string) => page.getByRole("region", { name: lane, exact: true }).getByRole("button", { name: "Abrir tarefa Corrigir cálculo do frete", exact: true });
   const move = async (source: string, target: string) => {
-    const lane = page.getByRole("region", { name: source, exact: true });
-    const selector = lane.getByRole("combobox", { name: "Mover Corrigir cálculo do frete", exact: true });
-    await selector.selectOption(target);
-    await selector.press("Tab");
-    await page.keyboard.press("Enter");
+    await card(source).click();
+    const dialog = page.getByRole("dialog", { name: "Corrigir cálculo do frete", exact: true });
+    await dialog.getByRole("combobox", { name: "Mover para", exact: true }).selectOption(target);
+    await dialog.getByRole("button", { name: "Mover", exact: true }).click();
+    await closeDetail();
   };
-  await expect(page.getByRole("region", { name: "Entrada", exact: true }).getByRole("button", { name: "Corrigir cálculo do frete", exact: true })).toBeVisible();
+  await expect(card("Entrada")).toBeVisible();
   await move("Entrada", "analysis");
-  await expect(page.getByRole("region", { name: "Em análise", exact: true }).getByRole("button", { name: "Corrigir cálculo do frete", exact: true })).toBeVisible();
+  await expect(card("Em análise")).toBeVisible();
   await move("Em análise", "ready");
   const readyLane = page.getByRole("region", { name: "Pronta", exact: true });
-  await expect(readyLane.getByRole("button", { name: "Corrigir cálculo do frete", exact: true })).toBeVisible();
+  await expect(card("Pronta")).toBeVisible();
 
   // Another client changes the version; the UI must reload instead of moving a stale card.
   const organizations = await (await page.request.get("/api/v1/organizations/")).json();
@@ -52,13 +57,16 @@ test("cadastro, edição, movimentação por teclado, rejeição e fila", async 
       assigneeId: task.assigneeId, dependencyIds: task.dependencyIds, version: task.version },
   });
   expect(changed.status()).toBe(200);
-  await move("Pronta", "execution");
+  await readyLane.getByRole("button", { name: "Executar", exact: true }).click();
   await expect(page.getByRole("region", { name: "Quadro de tarefas", exact: true }).getByRole("alert")).toContainText("alterada por outra pessoa");
-  await expect(readyLane.getByRole("button", { name: "Corrigir cálculo do frete", exact: true })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Em execução", exact: true }).getByRole("button", { name: "Corrigir cálculo do frete", exact: true })).toHaveCount(0);
-  await move("Pronta", "execution");
-  await expect(page.getByRole("region", { name: "Em execução", exact: true }).getByRole("button", { name: "Corrigir cálculo do frete", exact: true })).toBeVisible();
-  await expect(page.getByText("Na fila · tentativa 0 de 3", { exact: true })).toBeVisible();
+  await expect(card("Pronta")).toBeVisible();
+  await expect(card("Em execução")).toHaveCount(0);
+  await readyLane.getByRole("button", { name: "Executar", exact: true }).click();
+  await expect(card("Em execução")).toBeVisible();
+  await card("Em execução").click();
+  await page.getByRole("tab", { name: /Execuções/ }).click();
+  await expect(page.getByText("Na fila", { exact: true })).toBeVisible();
+  await expect(page.getByText("Tentativa 0 de 3", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Ver progresso", exact: true }).click();
   const progress = page.getByRole("region", { name: "Progresso da execução", exact: true });
   await expect(progress.getByText("Atualização ao vivo", { exact: true })).toBeVisible();
@@ -73,7 +81,7 @@ test("cadastro, edição, movimentação por teclado, rejeição e fila", async 
   await page.route(`**${executionPath}/progress`, route => route.fulfill({ json: simulatedProgress }));
   await page.route(`**${executionPath}/events`, route => route.fulfill({ contentType: "text/event-stream", body: `event: state\ndata: ${JSON.stringify(simulatedProgress)}\n\n` }));
   await page.route(`**${executionPath}/publication`, route => route.fulfill({ json: {
-    state: "published", attempts: 1, failureCode: null, pullRequest: { number: 7, url: "https://github.com/fixture/repo/pull/7",
+    state: "published", attempts: 1, failureCode: null, pullRequest: { number: 7, url: `/api/v1/organizations/${organization.id}/projects/${projects.items[0].id}/repository/local/reviews/${executions.items[0].id}`,
       baseCommit: "a".repeat(40), headCommit: "b".repeat(40), branch: "teamflow/fixture" },
   } }));
   const reviewState = { state: "review_required", headCommit: "b".repeat(40), ciPassed: true, approvedBy: null, mergeCommit: null };
@@ -81,7 +89,7 @@ test("cadastro, edição, movimentação por teclado, rejeição e fila", async 
   await page.route(`**${executionPath}/review/approve`, route => route.fulfill({ json: { ...reviewState, state: "awaiting_merge" } }));
   await page.route(`**${executionPath}/review/refresh`, route => route.fulfill({ json: { ...reviewState, state: "merged", mergeCommit: "d".repeat(40) } }));
   await page.getByRole("button", { name: "Ver progresso", exact: true }).click();
-  const reviewPanel = page.getByRole("region", { name: "Revisão do PR", exact: true });
+  const reviewPanel = page.getByRole("region", { name: "Revisão do commit", exact: true });
   await expect(reviewPanel).toContainText("Aguardando revisão independente");
   await reviewPanel.getByRole("button", { name: "Aprovar commit revisado" }).click();
   await expect(reviewPanel).toContainText("Aprovada, aguardando merge");
@@ -99,7 +107,7 @@ test("cadastro, edição, movimentação por teclado, rejeição e fila", async 
   } }));
   const directReview = page.getByRole("region", { name: "Revisão da execução mais recente", exact: true });
   await expect(directReview).toBeVisible({ timeout: 10000 });
-  await expect(directReview.getByRole("link", { name: "Abrir PR #7" })).toBeVisible();
+  await expect(directReview.getByRole("link", { name: "Abrir diff local" })).toBeVisible();
   await expect(directReview.getByRole("button", { name: "Aprovar commit revisado" })).toBeVisible();
   await expect(progress).toHaveCount(0);
   await expect(page.getByText(/^Execução anterior/)).toBeVisible();
@@ -108,15 +116,16 @@ test("cadastro, edição, movimentação por teclado, rejeição e fila", async 
     ...currentTasks, items: currentTasks.items.map((item: { id: string }) => item.id === task.id
       ? { ...item, stage: "review", allowedTransitions: [] } : item),
   } }));
+  await closeDetail();
   await page.getByRole("button", { name: "Atualizar quadro", exact: true }).click();
   const reviewLane = page.getByRole("region", { name: "Em revisão", exact: true });
   await expect(reviewLane.getByRole("button", { name: "Revisar alterações", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Fechar detalhe", exact: true }).click();
   await reviewLane.getByRole("button", { name: "Revisar alterações", exact: true }).click();
   await expect(directReview).toBeVisible();
   await page.unrouteAll({ behavior: "wait" });
   await page.getByRole("button", { name: "Cancelar execução", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Cancelada", exact: true }).getByRole("button", { name: "Corrigir cálculo do frete", exact: true })).toBeVisible();
+  await closeDetail();
+  await expect(card("Cancelada")).toBeVisible();
   await page.getByRole("button", { name: "Sair", exact: true }).click();
   await expect(page.getByRole("button", { name: "Entrar", exact: true })).toBeVisible();
 });

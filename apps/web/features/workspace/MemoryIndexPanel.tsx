@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Alert } from "./ui";
 import { api, errorMessage, type Schema } from "./api";
 
-const indexLabels: Record<string, string> = { queued: "Na fila", processing: "Preparando", calling: "Gerando embeddings", completed: "Indexado", failed: "Falhou", uncertain: "Resultado incerto" };
+const indexLabels: Record<string, { label: string; tone: string }> = {
+  queued: { label: "Na fila", tone: "info" }, processing: { label: "Preparando", tone: "info" }, completed: { label: "Indexado", tone: "success" },
+  failed: { label: "Falhou", tone: "danger" }, uncertain: { label: "Resultado incerto", tone: "warning" },
+};
 
 export function MemoryIndexPanel({ path, source }: { path: string; source: Schema["MemoryDto"] }) {
   const [indexes, setIndexes] = useState<Schema["IndexDto"][]>([]);
@@ -33,19 +37,24 @@ export function MemoryIndexPanel({ path, source }: { path: string; source: Schem
     } catch (failure) { setError(errorMessage(failure)); }
     finally { setBusy(false); }
   }
-  return <section aria-label="Indexação da memória">
-    <h3>Índice de contexto</h3>
-    <p className="hint">O perfil Codex prepara um índice textual local, sem chamar IA ou gerar embeddings. Perfis de API usam o provedor configurado, quando habilitado. Resultados incertos exigem avaliação antes de uma nova solicitação.</p>
-    {error && <p role="alert" className="error">{error}</p>}
-    <ul>{indexes.map(job => <li key={job.id}>{indexLabels[job.state] ?? job.state} · {job.sourceVersion !== source.version ? "Histórico; a fonte mudou" : "Versão atual"} · {job.model} · versão {job.sourceVersion}
-      {job.failureCode && ` · ${job.failureCode}`} · custo {job.estimatedCostUsd == null ? "desconhecido" : `US$ ${job.estimatedCostUsd}`}</li>)}</ul>
-    <button disabled={busy} onClick={() => setRefresh(value => value + 1)}>Atualizar indexação</button>
-    <form onSubmit={queue} aria-label="Solicitar indexação"><fieldset disabled={busy || source.status !== "validated" || profiles.length === 0}>
-      <label>Perfil para indexação<select name="profile" required>{profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
-      <label>Orçamento de indexação em US$<input name="budget" type="number" min="0.01" max="5" step="0.01" defaultValue="0.05" required /></label>
-      <button>Indexar ou reconstruir contexto</button>
-    </fieldset></form>
-    {source.status !== "validated" && <p>Valide a fonte antes de indexar.</p>}
-    {profiles.length === 0 && <p>Configure um perfil ativo para indexar o contexto.</p>}
+  return <section className="card" aria-label="Indexação da memória">
+    <div className="card-header"><div><h2>Índice de contexto</h2><p>O índice é textual e local: não chama IA nem gera embeddings.</p></div>
+      <button className="sm" style={{ marginLeft: "auto" }} onClick={() => setRefresh(value => value + 1)}>Atualizar indexação</button></div>
+    <div className="card-body stack">
+      {error && <Alert>{error}</Alert>}
+      {indexes.length > 0 && <ul className="index-list">{indexes.map(job => {
+        const state = indexLabels[job.state] ?? { label: job.state, tone: "" };
+        return <li key={job.id}><span className={`badge ${state.tone}`}>{state.label}</span>
+          <span>{job.sourceVersion !== source.version ? "Histórico; a fonte mudou" : "Versão atual"} · {job.model}</span>
+          {job.failureCode && <span className="hint">{job.failureCode}</span>}</li>;
+      })}</ul>}
+      {source.status !== "validated" && <Alert tone="info">Valide a fonte antes de indexar.</Alert>}
+      {profiles.length === 0 && <Alert tone="info">Configure um perfil ativo para indexar o contexto.</Alert>}
+      <form onSubmit={queue} aria-label="Solicitar indexação"><fieldset disabled={busy || source.status !== "validated" || profiles.length === 0}>
+        <label>Perfil para indexação<select name="profile" required>{profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
+        <label style={{ maxWidth: 240 }}>Orçamento de indexação em US$<input name="budget" type="number" min="0.01" max="5" step="0.01" defaultValue="0.05" required /></label>
+        <div className="actions"><button>Indexar ou reconstruir contexto</button></div>
+      </fieldset></form>
+    </div>
   </section>;
 }

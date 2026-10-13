@@ -21,14 +21,14 @@ test("memória candidata, validação, arquivamento e restauração", async ({ p
   await expect(form.getByLabel("Status da memória")).toHaveValue("candidate");
   await form.getByLabel("Status da memória").selectOption("validated");
   await form.getByRole("button", { name: "Salvar versão da memória" }).click();
-  await expect(page.getByText("· Validada", { exact: false })).toBeVisible();
+  await expect(page.getByText("Validada", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Arquivar", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Arredondamento financeiro", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Arredondamento financeiro/ })).toHaveCount(0);
   await page.getByLabel("Mostrar arquivadas").check();
   await page.getByRole("button", { name: "Restaurar como candidata" }).click();
   await expect(page.getByRole("button", { name: "Restaurar como candidata" })).toHaveCount(0);
   await page.getByLabel("Mostrar arquivadas").uncheck();
-  await page.getByRole("button", { name: "Arredondamento financeiro", exact: true }).click();
+  await page.getByRole("button", { name: /^Arredondamento financeiro/ }).click();
   await expect(form.getByLabel("Status da memória")).toHaveValue("candidate");
   await expect(form.getByLabel("Conteúdo da memória")).toHaveValue("Valores monetários usam duas casas decimais.");
   await page.getByRole("navigation", { name: "Navegação do projeto" }).getByRole("button", { name: "Demandas", exact: true }).click();

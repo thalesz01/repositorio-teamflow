@@ -30,7 +30,7 @@ test("criação com foco, cancelamento e projetos restritos à equipe selecionad
     await dialog.getByLabel("Novo projeto", { exact: true }).fill(name);
     await dialog.getByRole("button", { name: "Criar projeto", exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Quadro de tarefas", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Quadro", exact: true })).toBeVisible();
   };
   await createTeam("Equipe Alfa");
   await createProject("Projeto Alfa", "Equipe Alfa");
@@ -41,6 +41,8 @@ test("criação com foco, cancelamento e projetos restritos à equipe selecionad
   await expect(page.getByRole("combobox", { name: "Projeto", exact: true }).locator("option", { hasText: "Projeto Alfa" })).toHaveCount(1);
   await expect(page.getByRole("combobox", { name: "Projeto", exact: true }).locator("option", { hasText: "Projeto Beta" })).toHaveCount(0);
   await page.setViewportSize({ width: 375, height: 812 });
+  // On narrow screens the team switcher lives in the off-canvas menu.
+  await page.getByRole("button", { name: "Abrir menu", exact: true }).click();
   await addTeam.click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await teamDialog.getByLabel("Nova equipe", { exact: true }).press("Escape");
