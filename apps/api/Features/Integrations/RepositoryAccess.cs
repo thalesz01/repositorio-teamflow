@@ -12,10 +12,49 @@ public sealed class RepositoryAccess(AppDbContext db, LeaseAccess leases, LocalR
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<string?> SnapshotAsync(Guid organizationId, Guid projectId, Guid executionId, CancellationToken ct)
+    /// <summary>Finds or creates the connection for a folder chosen while creating a task. The folder is not modified.</summary>
+    public async Task<GitConnection> EnsureTaskFolderAsync(Guid organizationId, Guid projectId, string path, string? branch, CancellationToken ct)
     {
-        var connection = await db.GitConnections.SingleOrDefaultAsync(g => g.OrganizationId == organizationId
-            && g.ProjectId == projectId && g.RevokedAt == null, ct);
+        var folder = await local.InspectAsync(organizationId, projectId, path, ct);
+        var name = branch ?? "";
+        if (name.Length > 0 && (!folder.HasGit || !folder.Branches.Contains(name)))
+            throw new ApiException(400, "invalid_repository", "Select an existing local branch.");
+        if (name.Length == 0 && folder.HasGit && folder.Branches.Length > 0)
+            name = folder.CurrentBranch is { } current && folder.Branches.Contains(current) ? current : folder.Branches[0];
+        Task<GitConnection?> Find() => db.GitConnections.SingleOrDefaultAsync(g => g.OrganizationId == organizationId && g.ProjectId == projectId
+            && g.ForTasks && g.RevokedAt == null && g.LocalPath == folder.Path && g.BaseBranch == name, ct);
+        if (await Find() is { } existing) return existing;
+        var connection = new GitConnection
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = organizationId,
+            ProjectId = projectId,
+            Provider = "local",
+            ForTasks = true,
+            LocalPath = folder.Path,
+            BaseBranch = name,
+            BaseCommit = name.Length > 0 ? await local.VerifyAsync(folder.Path, name, ct) : "",
+            Version = Guid.NewGuid()
+        };
+        db.GitConnections.Add(connection);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException failure) when (failure.InnerException is Npgsql.PostgresException { SqlState: "23505" })
+        {
+            // Another request created the same folder first; use its connection.
+            db.Entry(connection).State = EntityState.Detached;
+            return await Find() ?? throw new ApiException(409, "repository_revoked", "Folder configuration changed; try again.");
+        }
+        return connection;
+    }
+
+    public async Task<string?> SnapshotAsync(Guid organizationId, Guid projectId, Guid executionId, CancellationToken ct, Guid? connectionId = null)
+    {
+        var connection = connectionId is { } chosen
+            ? await db.GitConnections.SingleOrDefaultAsync(g => g.Id == chosen && g.OrganizationId == organizationId
+                && g.ProjectId == projectId && g.RevokedAt == null, ct)
+                ?? throw new ApiException(409, "repository_revoked", "The task folder configuration was revoked.")
+            : await db.GitConnections.SingleOrDefaultAsync(g => g.OrganizationId == organizationId
+                && g.ProjectId == projectId && g.RevokedAt == null && !g.ForTasks, ct);
         if (connection is not null && (!GitRules.IsCommit(connection.BaseCommit) || string.IsNullOrWhiteSpace(connection.BaseBranch)
             || !Directory.Exists(Path.Combine(connection.LocalPath, ".git"))))
         {
@@ -29,6 +68,14 @@ public sealed class RepositoryAccess(AppDbContext db, LeaseAccess leases, LocalR
                 connection.Version = Guid.NewGuid();
                 await db.SaveChangesAsync(ct);
             }
+        }
+        else if (connection is { ForTasks: true })
+        {
+            // A folder is reused by many tasks: start from the branch as it is now. The connection version (its identity) is unchanged,
+            // so executions already in review keep their own base commit and are checked against it.
+            local.AuthorizedPath(connection.OrganizationId, connection.ProjectId, connection.LocalPath);
+            var tip = await local.VerifyAsync(connection.LocalPath, connection.BaseBranch, ct);
+            if (tip != connection.BaseCommit) { connection.BaseCommit = tip; await db.SaveChangesAsync(ct); }
         }
         return connection is null ? null : JsonSerializer.Serialize(new RepositorySnapshot(connection.Id, connection.Version,
             connection.RepositoryId, GitRules.Url(connection), connection.BaseBranch, connection.BaseCommit, $"teamflow/{executionId:N}", connection.LocalPath), JsonOptions);

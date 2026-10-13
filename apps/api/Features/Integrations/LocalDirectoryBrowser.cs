@@ -10,7 +10,7 @@ public static class LocalDirectoryBrowser
 {
     public static LocalDirectoryListing Browse(IConfiguration configuration, Guid organizationId, Guid projectId, string? requested)
     {
-        var section = configuration.GetSection($"Integrations:{organizationId:D}:{projectId:D}:Local");
+        var section = Settings(configuration, organizationId, projectId);
         var roots = Roots(section);
         if (requested is null) return new(null, null, roots, [], false, false, false);
         var path = Normalize(requested);
@@ -39,12 +39,19 @@ public static class LocalDirectoryBrowser
 
     public static bool CanSelectRepository(IConfiguration configuration, Guid organizationId, Guid projectId, string requested)
     {
-        var section = configuration.GetSection($"Integrations:{organizationId:D}:{projectId:D}:Local");
+        var section = Settings(configuration, organizationId, projectId);
         var path = Normalize(requested);
         if (section.GetValue<bool>("AllowRepositorySelection")) return Roots(section).Any(root => Contains(root, path));
         var repository = section["RepositoryPath"]
             ?? throw new ApiException(503, "integration_not_configured", "Configure a local repository for this project.");
         return PathComparer.Equals(path, Normalize(repository));
+    }
+
+    // A project's own section wins; without one, the server-wide "Local" section applies (folders are chosen per task).
+    private static IConfigurationSection Settings(IConfiguration configuration, Guid organizationId, Guid projectId)
+    {
+        var project = configuration.GetSection($"Integrations:{organizationId:D}:{projectId:D}:Local");
+        return project.Exists() ? project : configuration.GetSection("Local");
     }
 
     private static string[] Roots(IConfigurationSection section)

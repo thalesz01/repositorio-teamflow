@@ -314,6 +314,65 @@
         }
       }
     },
+    "/api/v1/workspace": {
+      "post": {
+        "tags": [
+          "Workspace"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/executions/{id}/repository-token": {
+      "post": {
+        "tags": [
+          "Runner protocol"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepositoryTokenInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutGrant"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/organizations/{organizationId}/projects": {
       "get": {
         "tags": [
@@ -1451,6 +1510,63 @@
       }
     },
     "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/executions/{executionId}/review/merge": {
+      "post": {
+        "tags": [
+          "Reviews"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/executions/{executionId}/review/complete": {
       "post": {
         "tags": [
           "Reviews"
@@ -3057,46 +3173,6 @@
         "responses": {
           "200": {
             "description": "OK"
-          }
-        }
-      }
-    },
-    "/internal/v1/executions/{id}/repository-token": {
-      "post": {
-        "tags": [
-          "Runner protocol"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RepositoryTokenInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CheckoutGrant"
-                }
-              }
-            }
           }
         }
       }
@@ -5982,6 +6058,18 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "folderPath": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "baseBranch": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -6027,6 +6115,28 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "folderPath": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "baseBranch": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "stage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskStage"
+              }
+            ]
           }
         }
       },
@@ -6102,6 +6212,23 @@
             "format": "uuid"
           }
         }
+      },
+      "WorkspaceDto": {
+        "required": [
+          "organizationId",
+          "projectId"
+        ],
+        "type": "object",
+        "properties": {
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
       }
     }
   },
@@ -6111,6 +6238,12 @@
     },
     {
       "name": "Organizations"
+    },
+    {
+      "name": "Workspace"
+    },
+    {
+      "name": "Runner protocol"
     },
     {
       "name": "Projects"
@@ -6129,9 +6262,6 @@
     },
     {
       "name": "Runners"
-    },
-    {
-      "name": "Runner protocol"
     },
     {
       "name": "Repository connection"

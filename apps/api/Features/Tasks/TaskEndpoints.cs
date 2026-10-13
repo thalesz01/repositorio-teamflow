@@ -1,3 +1,4 @@
+using TeamFlow.Api.Features.Integrations;
 using TeamFlow.Api.Features.Memory;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
@@ -8,11 +9,13 @@ using TeamFlow.Api.Http;
 
 namespace TeamFlow.Api.Features.Tasks;
 
-public sealed record TaskInput(string Title, string Description, string[] AcceptanceCriteria, Guid? AssigneeId, Guid[] DependencyIds, Guid? AnalysisId = null);
+public sealed record TaskInput(string Title, string Description, string[] AcceptanceCriteria, Guid? AssigneeId, Guid[] DependencyIds, Guid? AnalysisId = null,
+    string? FolderPath = null, string? BaseBranch = null, TaskStage? Stage = null);
 public sealed record TaskUpdate(string Title, string Description, string[] AcceptanceCriteria, Guid? AssigneeId, Guid[] DependencyIds, Guid Version);
 public sealed record TransitionInput(TaskStage Stage, Guid Version);
 public sealed record TaskDto(Guid Id, Guid OrganizationId, Guid ProjectId, string Title, string Description,
-    string[] AcceptanceCriteria, Guid? AssigneeId, Guid[] DependencyIds, TaskStage Stage, Guid Version, DateTimeOffset CreatedAt, TaskStage[] AllowedTransitions, Guid? AnalysisId = null);
+    string[] AcceptanceCriteria, Guid? AssigneeId, Guid[] DependencyIds, TaskStage Stage, Guid Version, DateTimeOffset CreatedAt, TaskStage[] AllowedTransitions, Guid? AnalysisId = null,
+    string? FolderPath = null, string? BaseBranch = null);
 
 public static class TaskEndpoints
 {
@@ -28,7 +31,7 @@ public static class TaskEndpoints
     }
 
     public static TaskDto ToDto(WorkItem task) => new(task.Id, task.OrganizationId, task.ProjectId, task.Title, task.Description,
-        task.AcceptanceCriteria, task.AssigneeId, task.DependencyIds, task.Stage, task.Version, task.CreatedAt, TaskRules.AllowedTransitions(task.Stage), task.AnalysisId);
+        task.AcceptanceCriteria, task.AssigneeId, task.DependencyIds, task.Stage, task.Version, task.CreatedAt, TaskRules.AllowedTransitions(task.Stage), task.AnalysisId, task.FolderPath, task.BaseBranch);
 
     private static async Task<IResult> ListAsync(Guid organizationId, Guid projectId, int? page, int? pageSize,
         ClaimsPrincipal user, ProjectAccess access, AppDbContext db, CancellationToken ct)
@@ -41,11 +44,26 @@ public static class TaskEndpoints
     }
 
     private static async Task<IResult> CreateAsync(Guid organizationId, Guid projectId, TaskInput request, ClaimsPrincipal user,
-        ProjectAccess projects, OrganizationAccess organizations, TaskAccess tasks, PlanningAccess planning, AppDbContext db, CancellationToken ct)
+        ProjectAccess projects, OrganizationAccess organizations, TaskAccess tasks, PlanningAccess planning, RepositoryAccess repositories, AppDbContext db, CancellationToken ct)
     {
         await projects.RequireAsync(organizationId, projectId, user, ct);
         var task = new WorkItem { Id = Guid.NewGuid(), OrganizationId = organizationId, ProjectId = projectId };
         await ApplyInputAsync(task, request, organizations, tasks, ct);
+        if (request.Stage is { } stage)
+        {
+            if (stage is not (TaskStage.Intake or TaskStage.Ready))
+                throw new ApiException(400, "invalid_stage", "A new task can start only in Intake or Ready.");
+            if (stage == TaskStage.Ready && task.AcceptanceCriteria.Length == 0)
+                throw new ApiException(409, "criteria_required", "Acceptance criteria are required before execution.");
+            task.Stage = stage;
+        }
+        if (request.FolderPath is { } folderPath)
+        {
+            var connection = await repositories.EnsureTaskFolderAsync(organizationId, projectId, folderPath, request.BaseBranch, ct);
+            task.RepositoryConnectionId = connection.Id; task.FolderPath = connection.LocalPath; task.BaseBranch = connection.BaseBranch;
+        }
+        else if (request.BaseBranch is not null)
+            throw new ApiException(400, "invalid_repository", "A base branch needs a folder.");
         if (request.AnalysisId is { } analysisId)
         {
             await planning.ContextAsync(organizationId, projectId, analysisId, user, ct);

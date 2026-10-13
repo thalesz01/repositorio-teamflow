@@ -7,6 +7,7 @@ using TeamFlow.Api.Features.Tasks;
 using TeamFlow.Api.Features.Auth;
 using TeamFlow.Api.Features.Organizations;
 using TeamFlow.Api.Features.Projects;
+using TeamFlow.Api.Features.Workspace;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -108,6 +109,7 @@ app.Use(async (context, next) =>
 app.UseTeamFlowAuth();
 app.MapAuth();
 app.MapOrganizations();
+app.MapWorkspace();
 app.MapProjects();
 app.MapTasks();
 app.MapExecutions();

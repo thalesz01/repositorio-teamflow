@@ -249,6 +249,32 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
         Assert.Equal("merged", (await replay.ReadAsync<ReviewStatus>()).State);
     }
 
+    [Fact]
+    public async Task CompleteApprovesAndMergesInOneStepOnlyForSingleUserAsync()
+    {
+        using var setup = await SetupAsync(realGit: true);
+        using var workspace = new TeamFlow.Runner.ExecutionWorkspace(Path.GetFullPath(Path.Combine("work", "local-complete")));
+        await RunGitAsync(workspace.Path, "init", "-b", "main");
+        await RunGitAsync(workspace.Path, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "--allow-empty", "-m", "Base");
+        var baseline = (await RunGitAsync(workspace.Path, "rev-parse", "HEAD")).Trim();
+        await PublishLocallyAsync(setup, workspace.Path, baseline);
+        var configuration = setup.Factory.Services.GetRequiredService<IConfiguration>();
+        configuration["Local:EnableMerge"] = "true";
+        var completePath = setup.Path + "/complete";
+        using var own = await setup.Author.SendAsync(HttpMethod.Post, completePath, new { });
+        Assert.Equal(HttpStatusCode.Conflict, own.StatusCode);
+        Assert.Equal("independent_review_required", (await own.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        Assert.False(File.Exists(Path.Combine(workspace.Path, "answer.txt")));
+        configuration["Local:SingleUser"] = "true";
+        using var completed = await setup.Author.SendAsync(HttpMethod.Post, completePath, new { });
+        var result = await completed.ReadAsync<ReviewStatus>();
+        Assert.Equal("merged", result.State);
+        Assert.Equal(TaskStage.Done, await StageAsync(setup));
+        Assert.Equal("42", await File.ReadAllTextAsync(Path.Combine(workspace.Path, "answer.txt")));
+        using var replay = await setup.Author.SendAsync(HttpMethod.Post, completePath, new { });
+        Assert.Equal("merged", (await replay.ReadAsync<ReviewStatus>()).State);
+    }
+
     private static async Task<TaskStage> StageAsync(Scenario setup)
     {
         using var scope = setup.Factory.Services.CreateScope();

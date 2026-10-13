@@ -11,6 +11,8 @@ public sealed class GitConnection
     public string BaseBranch { get; set; } = "";
     public string BaseCommit { get; set; } = "";
     public Guid Version { get; set; }
+    // Folder chosen while creating a task; the project's own single connection keeps ForTasks=false.
+    public bool ForTasks { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
 }
 

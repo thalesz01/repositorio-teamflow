@@ -22,7 +22,9 @@ public sealed class LocalRunnerProvisioningTests(DatabaseFixture fixture) : ICla
             environment, project.OrganizationId, project.Id, CancellationToken.None));
         environment.EnvironmentName = "Development";
         await Assert.ThrowsAsync<InvalidOperationException>(() => LocalRunnerProvisioning.IssueAsync(services,
-            environment, project.OrganizationId, project.Id, CancellationToken.None));
+            environment, project.OrganizationId, Guid.NewGuid(), CancellationToken.None));
+        // Folders arrive with each task (ADR 0010), so an existing project is enough to issue a runner.
+        Assert.NotNull(await LocalRunnerProvisioning.IssueAsync(services, environment, project.OrganizationId, project.Id, CancellationToken.None));
         var root = Path.Combine(Path.GetTempPath(), "teamflow-provision-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try

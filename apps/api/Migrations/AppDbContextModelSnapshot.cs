@@ -293,8 +293,8 @@ namespace TeamFlow.Api.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<string>("ReviewFeedback")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasMaxLength(6000)
+                        .HasColumnType("character varying(6000)");
 
                     b.Property<string>("ReviewHeadCommit")
                         .HasMaxLength(40)
@@ -523,6 +523,9 @@ namespace TeamFlow.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
+                    b.Property<bool>("ForTasks")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("LocalPath")
                         .IsRequired()
                         .HasMaxLength(1024)
@@ -553,13 +556,15 @@ namespace TeamFlow.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasAlternateKey("Id", "OrganizationId", "ProjectId");
-
                     b.HasIndex("OrganizationId", "ProjectId")
                         .IsUnique()
-                        .HasFilter("\"RevokedAt\" IS NULL");
+                        .HasFilter("\"RevokedAt\" IS NULL AND NOT \"ForTasks\"");
 
                     b.HasIndex("ProjectId", "OrganizationId");
+
+                    b.HasIndex("OrganizationId", "ProjectId", "LocalPath", "BaseBranch")
+                        .IsUnique()
+                        .HasFilter("\"RevokedAt\" IS NULL AND \"ForTasks\"");
 
                     b.ToTable("GitConnections");
                 });
@@ -1012,6 +1017,10 @@ namespace TeamFlow.Api.Migrations
                     b.Property<Guid?>("AssigneeId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BaseBranch")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1024,10 +1033,17 @@ namespace TeamFlow.Api.Migrations
                         .HasMaxLength(10000)
                         .HasColumnType("character varying(10000)");
 
+                    b.Property<string>("FolderPath")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RepositoryConnectionId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Stage")
@@ -1051,6 +1067,8 @@ namespace TeamFlow.Api.Migrations
                     b.HasIndex("ProjectId", "OrganizationId");
 
                     b.HasIndex("AnalysisId", "OrganizationId", "ProjectId");
+
+                    b.HasIndex("RepositoryConnectionId", "OrganizationId", "ProjectId");
 
                     b.ToTable("WorkItems");
                 });
@@ -1267,6 +1285,12 @@ namespace TeamFlow.Api.Migrations
                     b.HasOne("TeamFlow.Api.Features.Memory.DemandAnalysis", null)
                         .WithMany()
                         .HasForeignKey("AnalysisId", "OrganizationId", "ProjectId")
+                        .HasPrincipalKey("Id", "OrganizationId", "ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("TeamFlow.Api.Features.Integrations.GitConnection", null)
+                        .WithMany()
+                        .HasForeignKey("RepositoryConnectionId", "OrganizationId", "ProjectId")
                         .HasPrincipalKey("Id", "OrganizationId", "ProjectId")
                         .OnDelete(DeleteBehavior.Restrict);
                 });

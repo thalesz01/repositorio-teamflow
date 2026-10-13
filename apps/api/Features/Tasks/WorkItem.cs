@@ -8,6 +8,10 @@ public sealed class WorkItem
     public Guid OrganizationId { get; set; }
     public Guid ProjectId { get; set; }
     public Guid? AnalysisId { get; set; }
+    // Folder and base branch chosen when the task was created; null for tasks that use the project connection.
+    public Guid? RepositoryConnectionId { get; set; }
+    public string? FolderPath { get; set; }
+    public string? BaseBranch { get; set; }
     public string Title { get; set; } = "";
     public string Description { get; set; } = "";
     public string[] AcceptanceCriteria { get; set; } = [];

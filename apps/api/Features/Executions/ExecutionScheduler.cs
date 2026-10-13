@@ -95,7 +95,7 @@ public sealed class ExecutionScheduler(AppDbContext db, TaskAccess tasks, TimePr
             ParentExecutionId = request.ParentExecutionId,
             ReviewFeedback = request.Feedback
         };
-        execution.RepositorySnapshot = await repositories.SnapshotAsync(organizationId, projectId, execution.Id, ct);
+        execution.RepositorySnapshot = await repositories.SnapshotAsync(organizationId, projectId, execution.Id, ct, task.RepositoryConnectionId);
         if (task.AnalysisId is { } analysisId)
             execution.MemoryContext = JsonSerializer.Serialize(await planning.ContextAsync(organizationId, projectId, analysisId, user, ct), MemorySearch.JsonOptions);
         else if (parentExecution?.MemoryContext is { } inheritedMemory)

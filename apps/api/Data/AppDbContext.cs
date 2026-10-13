@@ -101,7 +101,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         model.Entity<GitConnection>().Property(g => g.LocalPath).HasMaxLength(1024);
         model.Entity<ModelTurn>().Property(t => t.State).HasMaxLength(16);
         model.Entity<ModelTurn>().Property(t => t.Action).HasColumnType("jsonb");
-        model.Entity<Execution>().Property(e => e.ReviewFeedback).HasMaxLength(2000);
+        model.Entity<Execution>().Property(e => e.ReviewFeedback).HasMaxLength(6000);
         model.Entity<Execution>().HasOne<Execution>().WithMany().HasForeignKey(e => new { e.ParentExecutionId, e.OrganizationId, e.ProjectId })
             .HasPrincipalKey(e => new { e.Id, e.OrganizationId, e.ProjectId }).OnDelete(DeleteBehavior.Restrict);
         model.Entity<Execution>().Property(e => e.ReviewState).HasMaxLength(32);
@@ -123,7 +123,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         model.Entity<ExecutionCheckpoint>().HasIndex(c => new { c.OrganizationId, c.ProjectId, c.ExecutionId });
         model.Entity<GitConnection>().HasOne<Project>().WithMany().HasForeignKey(g => new { g.ProjectId, g.OrganizationId })
             .HasPrincipalKey(p => new { p.Id, p.OrganizationId }).OnDelete(DeleteBehavior.Restrict);
-        model.Entity<GitConnection>().HasIndex(g => new { g.OrganizationId, g.ProjectId }).IsUnique().HasFilter("\"RevokedAt\" IS NULL");
+        model.Entity<GitConnection>().HasIndex(g => new { g.OrganizationId, g.ProjectId }).IsUnique().HasFilter("\"RevokedAt\" IS NULL AND NOT \"ForTasks\"");
+        model.Entity<GitConnection>().HasIndex(g => new { g.OrganizationId, g.ProjectId, g.LocalPath, g.BaseBranch }).IsUnique().HasFilter("\"RevokedAt\" IS NULL AND \"ForTasks\"");
+        model.Entity<WorkItem>().HasOne<GitConnection>().WithMany().HasForeignKey(t => new { t.RepositoryConnectionId, t.OrganizationId, t.ProjectId })
+            .HasPrincipalKey(g => new { g.Id, g.OrganizationId, g.ProjectId }).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<WorkItem>().Property(t => t.FolderPath).HasMaxLength(1024);
+        model.Entity<WorkItem>().Property(t => t.BaseBranch).HasMaxLength(120);
         model.Entity<GitConnection>().Property(g => g.BaseBranch).HasMaxLength(120);
         model.Entity<GitConnection>().Property(g => g.BaseCommit).HasMaxLength(40);
         model.Entity<GitConnection>().Property(g => g.Version).IsConcurrencyToken();

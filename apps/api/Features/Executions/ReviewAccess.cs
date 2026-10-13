@@ -30,7 +30,7 @@ public sealed class ReviewAccess(AppDbContext db, TaskAccess tasks, RepositoryAc
         var execution = await RequireAsync(id, ct);
         if (execution.PublicationState != "published" || execution.PullRequestNumber is null || execution.PublishedHeadCommit is null)
             throw new ApiException(409, "publication_required", "A confirmed PR is required.");
-        if (approveBy == execution.RequestedBy)
+        if (approveBy == execution.RequestedBy && !configuration.GetValue<bool>("Local:SingleUser"))
             throw new ApiException(409, "independent_review_required", "Another team member must review the execution.");
         if (execution.ReviewState == "merged") return Status(execution);
         var source = JsonSerializer.Deserialize<RepositorySnapshot>(execution.RepositorySnapshot ?? "null", JsonOptions)
@@ -92,6 +92,15 @@ public sealed class ReviewAccess(AppDbContext db, TaskAccess tasks, RepositoryAc
         return Status(execution);
     }
 
+    /// <summary>Approves the tested head and merges it in one command; every check of the separate commands still applies.</summary>
+    public async Task<ReviewStatus> CompleteAsync(Guid id, Guid userId, CancellationToken ct)
+    {
+        var current = await ReconcileAsync(id, null, ct);
+        if (current.State == "merged") return current;
+        await ReconcileAsync(id, userId, ct);
+        return await MergeAsync(id, userId, ct);
+    }
+
     /// <summary>Fast-forwards the base branch to the approved head, then confirms the merge through the normal review check.</summary>
     public async Task<ReviewStatus> MergeAsync(Guid id, Guid requestedBy, CancellationToken ct)
     {
@@ -130,7 +139,7 @@ public static class ReviewEndpoints
             .RequireAuthorization().WithTags("Reviews");
         group.MapGet("/review", async (Guid organizationId, Guid projectId, Guid taskId, Guid executionId, ClaimsPrincipal user,
             ReviewAccess reviews, CancellationToken ct) => await reviews.ReadAsync(organizationId, projectId, taskId, executionId, user, ct));
-        foreach (var command in new[] { "approve", "refresh", "merge" })
+        foreach (var command in new[] { "approve", "refresh", "merge", "complete" })
         {
             var approve = command == "approve";
             group.MapPost("/review/" + command, async (Guid organizationId, Guid projectId, Guid taskId, Guid executionId,
@@ -138,6 +147,7 @@ public static class ReviewEndpoints
             {
                 await reviews.ReadAsync(organizationId, projectId, taskId, executionId, user, ct);
                 if (command == "merge") return await reviews.MergeAsync(executionId, AuthEndpoints.UserId(user), ct);
+                if (command == "complete") return await reviews.CompleteAsync(executionId, AuthEndpoints.UserId(user), ct);
                 return await reviews.ReconcileAsync(executionId, approve ? AuthEndpoints.UserId(user) : null, ct);
             });
         }

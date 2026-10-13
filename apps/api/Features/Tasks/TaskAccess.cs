@@ -35,8 +35,8 @@ public sealed class TaskAccess(AppDbContext db, ProjectAccess projects)
 
     public static void ApplyFeedback(WorkItem task, string feedback, string previousPr)
     {
-        if (task.Stage is not (TaskStage.Review or TaskStage.AwaitingMerge) || string.IsNullOrWhiteSpace(feedback) || feedback.Length > 2000)
-            throw new ApiException(409, "invalid_review_feedback", "Feedback requires a task under review and at most 2000 characters.");
+        if (task.Stage is not (TaskStage.Review or TaskStage.AwaitingMerge) || string.IsNullOrWhiteSpace(feedback) || feedback.Length > 6000)
+            throw new ApiException(409, "invalid_review_feedback", "Feedback requires a task under review and at most 6000 characters.");
         var description = task.Description + "\n\nReview feedback for " + previousPr + ":\n" + feedback;
         if (description.Length > 10000) throw new ApiException(400, "feedback_context_limit", "Feedback exceeds the task context limit.");
         task.Description = description;
