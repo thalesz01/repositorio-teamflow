@@ -52,6 +52,7 @@ builder.Services.AddScoped<ProjectAccess>();
 builder.Services.AddScoped<ProjectService>();
 builder.Services.AddScoped<WorkspaceService>();
 builder.Services.AddScoped<TaskAccess>();
+builder.Services.AddScoped<TaskService>();
 builder.Services.AddScoped<ExecutionScheduler>();
 builder.Services.AddScoped<LeaseAccess>();
 builder.Services.AddScoped<CheckpointAccess>();

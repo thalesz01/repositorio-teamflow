@@ -784,6 +784,14 @@ Por decisão explícita do responsável, a T25 passa a exigir smoke de Codex CLI
 - Validação: `dotnet test` API 97/97 (novos: `PromptContextTests` — teste, leitura repetida, omissão, estabilidade do prefixo, texto legível, execução sintética 24% menor, soma de uso; asserções de tokens em `AgentSelectionTests` e `LocalIntegrationTests`); `dotnet format`, `has-pending-model-changes`, `tsc`, `eslint`; Playwright 13/13 (asserções de tokens em `kanban` e `execution-report`).
 - Limitações: nenhum agente completo foi executado com modelo real; as medições de custo fixo vêm de duas chamadas reais curtas ao Codex e uma ao Claude. A economia real depende do tamanho dos arquivos e do número de passos. Custo em dinheiro continua desconhecido para os CLIs. Não reduz o número de passos nem impõe orçamento por execução (itens 4 e 5 do plano).
 
+### [x] T62 — Endpoints enxutos: Tasks como feature de referência
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-14
+- Escopo: tirar regra de negócio dos endpoints, começando por `Features/Tasks`, que passa a ser o modelo para as demais features (AGENTS.md §6). Refactor sem mudança de comportamento nem de contrato HTTP.
+- Conclusão 2026-10-14: `TaskContracts.cs` guarda os DTOs e `TaskDto.From`; `TaskService` concentra listar, criar, editar e transicionar (a criação foi dividida em kind, estágio inicial, pasta e sequência, na mesma ordem de validação); `TaskEndpoints` só faz rota, binding e resposta, com handlers nomeados; `ExecutionScheduler` usa `TaskDto.From` em vez de chamar a classe de endpoints.
+- Validação: `dotnet build --no-restore` → sem avisos; `dotnet format TeamFlow.Api.csproj --verify-no-changes --no-restore` → sem diferenças; `dotnet test` API → 97/97. Na primeira execução do baseline filtrado `AgentSelectionTests.TaskCanBeSavedBeforeItsAiIsReadyAndOnlyRunningNeedsTheCliAsync` falhou uma vez, antes de qualquer alteração, e passou na repetição; causa não investigada. OpenAPI exportado da `develop` e desta branch (API em Development, porta 5098, banco inexistente, content root isolado) → JSON equivalente; o `GET` de tarefa precisou de `.Produces<TaskDto>()` para manter o schema.
+- Limitações: `Projects`, `Organizations`, `Memory`, `Runners`, `Integrations` e `Executions` ainda têm lógica nos endpoints ou em classes grandes e seguem o mesmo padrão em tarefas futuras. Sem testes unitários novos: a cobertura vem dos testes HTTP existentes.
 ### [x] T63 — Padrão de endpoints enxutos nas demais features
 
 - Status: Concluída
