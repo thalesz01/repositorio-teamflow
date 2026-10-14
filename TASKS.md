@@ -41,7 +41,7 @@ Referência: commit/PR quando houver, ou entrega local sem commit
 | Memória | T21–T24 | Conhecimento com fontes, recuperação e portabilidade |
 | Piloto | T25 | Fluxo completo validado com limites explícitos |
 
-Próximo passo: nenhum item obrigatório pendente. T01–T41 estão concluídas. Esta ordem não autoriza trabalho paralelo automaticamente.
+Próximo passo: nenhum item obrigatório pendente. T01–T61 estão concluídas. Esta ordem não autoriza trabalho paralelo automaticamente.
 
 ## Tarefas
 
@@ -624,3 +624,162 @@ Por decisão explícita do responsável, a T25 passa a exigir smoke de Codex CLI
 - Conclusão 2026-10-13: `RunnerToolPolicy.Create` e `AgentToolPolicy.Create` (glob, repetido na API por `ToolPathPattern`); `WorkspaceTools.MayCreate` com limites e releitura de arquivos criados; o prompt pede um resumo ao finalizar; `ExecutionProgress.AgentSummary` (até 2000 caracteres); modal de revisão mostra "O que o agente informou". Política padrão do projeto Teste recebeu `create: ["**/*.cs"]`.
 - Validação: `dotnet test` API 74/74 e Runner 33/33 (novos: criação por padrão com negativas para existentes, ocultos, `bin`, travessia, limite de 20 e sem hash; ação do modelo por padrão e resumo no progresso); `dotnet format` limpo; `tsc`, `eslint`, build e Playwright 9/9 (resumo exibido no modal). O teste de orçamento de modelo foi reajustado (preço de saída 0.9) porque o prompt ficou maior.
 - Limitações: nenhuma execução real com o Codex foi feita para confirmar que o modelo passa a criar o arquivo; a primeira correção real depois desta mudança é a evidência. O resumo é texto livre do modelo, exibido como texto simples e não prova que o pedido foi cumprido.
+
+### [x] T42 — Melhorar criação de tarefas
+
+- Status: Concluída
+- Responsável: Codex; início 2026-10-13
+- Escopo: separar objetivo e pasta, ampliar respiro e margem da ajuda, organizar ações e preservar criação/seletor/foco/responsividade.
+- Conclusão 2026-10-13: modal de 720 px com cabeçalho, seções de objetivo/pasta, auxílio com margem positiva de 10 px, bloco de pasta destacado e rodapé de ações fixo. Corpo rola no celular; tema usa tokens existentes; rótulos, foco e lógica de criação preservados. Lint e build/TypeScript aprovados. Teste workspace-design passou (seções, ações no celular, Esc e foco); capturas 1440/375 px revisadas. Teste de Kanban: cenário de tela estreita passou; jornada completa ficou bloqueada no seletor porque o servidor local não oferece E2E_FOLDER_ROOT esperado. Não foi declarada aprovação da jornada completa nem ampliada autorização de pastas para testes. Frontend final atualizado na porta 3000.
+
+### [x] T43 — Selecionar CLI, modelo e esforço por tarefa
+
+- Status: Concluída
+- Responsável: Codex; início 2026-10-13
+- Escopo autorizado: pasta discreta; Codex/Claude locais autenticados; seleção de modelo/esforço; parâmetros persistidos e contexto portátil; instalação oficial Claude solicitada.
+- Critérios: seleção validada pelo servidor; combinações disponíveis; nenhum shell/prompt interpolado; ferramentas externas desabilitadas; histórico preservado; testes/contratos/migração e preview atualizados.
+- Conclusão 2026-10-13: seletor por tarefa, catálogo local Codex/aliases Claude, níveis compatíveis, pasta discreta, vínculo técnico imutável e FK de escopo. Claude Code 2.1.296 instalado pelo script oficial; PATH do usuário ajustado; auth status real indica sem login. CLI Claude integrado com stdin, ferramentas/MCP desabilitados, ambiente limitado e timeout. Migração aplicada, contratos/cliente atualizados. 76 testes API passaram (fixtures explícitas para modelos); teste UI passou com troca de fornecedor, reset dos parâmetros, login necessário, teclado e mobile. Build/tipos/lint/format e EF sem diferenças verificados. API/frontend publicados. Inferência real Claude pendente do login humano; instalação/status não foram declarados como smoke de modelo.
+
+### [x] T44 — Corrigir usabilidade e rolagem da criação
+
+- Status: Concluída
+- Responsável: Codex; início 2026-10-13
+- Escopo: modal compacto em duas colunas no desktop, coluna única no celular, corpo rolável e ações sem sobreposição; testar acesso real aos seletores após rolagem.
+- Conclusão 2026-10-13: modal limitado à viewport, duas colunas no desktop e uma no celular; cabeçalho e rodapé não encolhem, form/corpo têm min-height 0 e somente o corpo rola. Grid usa tracks min-content, evitando que seções vazem sobre ações. Seletores de IA ficaram na coluna de pasta; campos e textos compactados. Teste em 1066x740/375x812 confirma que o centro dos seletores recebe clique (elementFromPoint), ações ficam na viewport e não há overflow horizontal; troca de IA, teclado/Esc/foco preservados. Capturas 1440x1000 e 375x812 revisadas; build/TypeScript/lint aprovados. Frontend atualizado; sem alteração da API ou execução de modelo.
+
+### [x] T45 — Inicialização automática do runner local
+
+- Status: Concluída
+- Responsável: Codex; início 2026-10-13
+- Escopo: supervisor local opt-in na API; iniciar configurações existentes, impedir duplicação, reiniciar após saída e encerrar processos próprios com a API. Verificar início e recuperação reais sem executar modelo de teste.
+- Conclusão: supervisor opt-in em Development/Windows, processos ocultos, argumentos estruturados, ambiente sem segredos da API, lock exclusivo, recuperação a cada 30 s e encerramento dos filhos na parada normal. Habilitado no ambiente local; API reiniciada. Dois runners reais iniciaram automaticamente; interrupção de um processo confirmou novo PID e ausência de duplicados. 76 testes API, build API/runner e format aprovados. Nenhuma inferência de IA foi necessária para verificar startup. Projetos sem política/credencial continuam exigindo configuração explícita.
+
+### [x] T46 — IA pronta só para executar, checklist por IA e formatação
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-13
+- Escopo: corrigir problemas achados na análise do T43: criar tarefa falhava se a IA escolhida não estava pronta, o checklist exigia só o Codex e o format reprovava.
+- Conclusão 2026-10-13: salvar a tarefa valida só a combinação IA/modelo/esforço pelo catálogo (`LocalCliAgents.Catalog`); a prontidão (instalada, logada, habilitada) é exigida ao executar, antes de abrir a transação (`RequireReadyAsync` no agendamento, erro `cli_not_ready`). O passo do checklist virou "IA da máquina" (qualquer IA pronta), listando cada uma com o comando de login; o vínculo Codex antigo continua para tarefas sem IA escolhida. Mensagem do modelo genérica. `dotnet format` aplicado. A pilha do e2e usa o executável de fixture do Codex.
+- Validação: `dotnet test` API 77/77 (novo: tarefa salva sem IA pronta e bloqueada só ao executar, depois liberada); `dotnet format --verify-no-changes` limpo na API e nos testes; `tsc`, `eslint`; Playwright 9/9 contra build de produção com API e banco isolados (jornada completa criar → executar → corrigir → concluir, checklist com Codex e Claude).
+- Limitações: o Claude continua sem inferência real (depende de login). O status das IAs ainda é consultado sem cache a cada abertura do modal e a cada 15 s no checklist.
+
+### [x] T47 — Detalhe da tarefa em modal centralizado
+
+- Status: Concluída
+- Responsável: Codex; início 2026-10-13
+- Escopo: substituir painel lateral por modal com Detalhes/Execuções, corpo rolável, ações fixas, foco e adaptação à viewport.
+- Conclusão: modal de até 960 px centralizado e limitado à viewport; cabeçalho/abas e rodapé fixos, corpo com rolagem interna, botão Fechar em ambas as abas. Preservadas edição, cancelamento, histórico e revisão. Lint/build/TypeScript aprovados; teste Playwright passou com centralização medida, abas, viewport móvel, ações visíveis, Escape e foco de retorno. Capturas desktop/mobile revisadas. Frontend reiniciado com a alteração; nenhuma mudança da API.
+
+### [x] T48 — Preservar login da assinatura Claude
+
+- Status: Concluída
+- Responsável: Codex; início 2026-10-13
+- Escopo: corrigir claude_failed ao utilizar autenticação claude.ai; substituir bare por safe-mode mantendo ferramentas/MCP desabilitados e contexto isolado; verificar com fixture e chamada real mínima.
+- Conclusão: execução 2d5e3956 falhou com claude_failed (opus/low); login real claude.ai confirmado. bare ignorava OAuth; substituído por safe-mode, que mantém autenticação e desativa customizações. Fixture passou a rejeitar bare. Chamada real única, texto mínimo, Opus/low, mesmas restrições e ambiente limitado: exit 0 e resposta exata esperada. Build/format aprovados; API reiniciada. Execução original preservada, sem repetir alterações da tarefa automaticamente.
+
+### [x] T53 — Executar uma tarefa com uma skill
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-13
+- Escopo: poder escolher uma skill ao abrir a tarefa e executá-la com ela, com skills do projeto (pasta da tarefa) e pessoais (ADR 0012).
+- Conclusão 2026-10-13: `LocalSkills` (lista e resolve `SKILL.md` em quatro raízes fixas, com limites e sem links), `GET .../tasks/{id}/skills`, `ExecutionInput.skill`, instantâneo na execução (`SkillName`, `SkillSnapshot`, migração `ExecutionSkill` já aplicada no banco local), herança pelas correções, texto da skill no prompt de cada turno depois da política, selo "Skill" no histórico e `SkillRunner` na tarefa aberta.
+- Validação: `dotnet test` API 79/79 (novos: listagem/resolução com recusa de identificadores inválidos, grandes, com travessia e de origem desligada; skill no prompt depois da política); `dotnet format` limpo; `tsc`, `eslint`; Playwright 10/10 contra build de produção (novo `skills.spec.ts` com a lista simulada).
+- Limitações: nenhuma execução real com Codex/Claude usando skill foi feita (o efeito no resultado depende do modelo); a skill ocupa espaço do contexto de cada turno; só `SKILL.md`, sem scripts; correções escolhem a skill da execução anterior, ainda sem seletor próprio no modal de revisão.
+
+### [x] T49 — Correção autônoma de testes e relatório em modal
+
+- Status: Concluída
+- Responsável: Codex; início 2026-10-13
+- Escopo: falhas ordinárias de teste retornam ao modelo com diagnóstico limitado; checkpoint/result/publicação aceitam histórico corrigido somente com último teste aprovado; relatório completo consultável e copiável em modal. Investigar restore offline SqlClient.
+- Conclusão: falha de teste comum não encerra o harness; diagnóstico bounded/redacted retorna ao modelo para correção e novo teste. Último teste após última edição precisa passar; timeouts, truncamentos e negações permanecem fatais. API verifica histórico corrigido em checkpoints, resultado, publicação e transferência; recovery ignora variações de stdout/stderr ao conferir manifesto. Relatório completo do checkpoint mais recente abre em modal nativo, inclui histórico/resultados e diagnóstico estruturado, sem conteúdo de arquivos; botão Copiar e Escape/foco testados. API 81/81, runner 33/33 e E2E do modal passaram; build/tipos/lint/format aprovados. Restore SqlClient 5.2.2 real sem rede passou em imagem local imutável preparada sem código do usuário e configurada no runner Teste. A execução histórica 3f793fa4 não foi reexecutada nem marcada bem-sucedida; saída antiga inexistente não é recuperável. Correção autônoma foi verificada com modelo double e Git/Docker/PostgreSQL reais, sem nova inferência paga nesta tarefa.
+
+### [x] T50 — Clareza do modal de tarefa
+
+- Status: Concluída
+- Responsável: Codex; início 2026-10-13
+- Escopo: descrição à esquerda, contexto/execução à direita, estado de falha com acesso ao histórico, skill opcional discreta, rolagem e ações claras; preservar lógica de execução e edição.
+- Conclusão: modal com definição e contexto lado a lado, folder/branch em resumo próprio e execução/skill compactas. Falha explica o próximo passo com Ver execuções e Executar novamente. Cabeçalho reúne título e estado; rodapé mantém edição/fechar e cancelamento discreto. Tabs suportam setas/Home/End e zeram rolagem ao alternar. Mobile vira uma coluna. Build/tipos/lint passaram; 3 E2E passaram (modal, skill e relatório); cenário de falha revalidado com fixture, tema escuro e clique real no botão após rolagem móvel. Capturas light/dark e desktop/mobile revisadas. Frontend atualizado; regras de execução/API preservadas.
+
+### [x] T51 — Diagnóstico de falha da interação IA
+
+- Status: Concluída
+- Responsável: Codex; início 2026-10-13
+- Escopo: preservar código/tipo de falha do turno, tratar JSON inválido e normalizar JSON cercado por Markdown; relatório completo disponível mesmo antes de checkpoints; causa histórica específica desconhecida preservada sem inventar evidência.
+- Conclusão: execução histórica 1fb030b1 falhou na segunda interação (primeira leitura concluída, turno seguinte uncertain/internal_error). Diagnóstico específico não foi persistido naquela versão e não foi atribuído a uma causa por suposição. ModelTurns agora preserva FailureCode/FailureType (migração ModelTurnFailure aplicada); JSON inválido vira invalid_model_response e JSON em fence é normalizado sem repetir chamada. GET /report usa último checkpoint ou nenhum e inclui falha/modelFailures; relatório direto no cartão, mensagem legível e cópia. Testes API 83/83 passaram, incluindo resposta malformada/fence, privacidade, ausência de checkpoint e isolamento; E2E do relatório direto passou. Build/tipos/lint/format aprovados. API/frontend atualizados. Transporte Claude safe-mode/text foi preservado; não foi declarada nova execução real da tarefa como bem-sucedida.
+
+### [x] T52 — Respostas de ações por schema nos CLIs
+
+- Status: Concluída
+- Responsável: Codex; início 2026-10-13
+- Escopo: corrigir invalid_model_response 9da0aa13; schema explícito por turno, CLI Claude/Codex estruturados, planejamento preservado e fixtures/validação reais. Resposta rejeitada original não armazenada; reprodução textual retornou leitura válida.
+- Conclusão: ITextModel aceita schema opcional; somente ModelTurn usa ModelActionSchema, preservando planejamento. Codex recebe arquivo --output-schema e Claude --json-schema/JSON envelope com StructuredOutput habilitado e ferramentas externas/MCP desabilitados. Negação wildcard bloqueava também o formatador interno; substituída por negação explícita, ferramentas nativas vazias e safe-mode/restricted. Smoke real Opus/low estruturado passou; fixtures verificam schema e rejeitam envelope ausente. API 83/83 passou. Reexecução real ee3bc009 de 9da0aa13 usou Claude, realizou leituras/escritas, build SDK8 sem avisos/erros, finalizou tests_passed e publicou revisão local; sem merge. Resposta rejeitada original não armazenada: replay textual retornou leitura válida, sem atribuir seu conteúdo histórico por suposição. Relatório passa a serializar estados como strings. Formatação e testes de progresso aprovados.
+
+### [x] T54 — Correção que travava em silêncio e log do runner
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-13
+- Escopo: a execução 328fed48 (correção) ficou "Executando" por três tentativas sem nenhum passo. Causa provável: o T49 passou a aceitar histórico com teste falho corrigido na API, mas `TransferRestore` do runner ainda exigia toda evidência com sucesso e lançava `InvalidDataException`, que o `RunnerCoordinator` não capturava, derrubando o processo sem reportar nada.
+- Conclusão 2026-10-13: `TransferRestore` usa `TestEvidence.IsValidated` (mesma regra da API: o último teste depois da última edição passa; falhas anteriores só se forem comuns, nunca timeout ou saída truncada); `RunnerCoordinator` trata `InvalidDataException` como `runner_failed` da execução; `RunnerWorker` registra qualquer falha inesperada, espera e continua em vez de encerrar o processo; novo `RunnerLog` grava `runner.log` (com rotação em `.old`) ao lado do `controller.json`: início, parada, resultado de cada execução e exceções (sem prompts, arquivos ou tokens). Fim de linha de `AgentHarness.cs` normalizado.
+- Validação: `dotnet test` Runner 36/36 (novos: transferência com teste corrigido aceita e com estado final falho/timeout recusada; checkout inválido vira `runner_failed`; worker registra a falha e segue); `dotnet format` limpo no runner e nos testes.
+- Limitações: a causa da 328fed48 é inferida do código e dos dados (sem log na época); a correção real com modelo não foi reexecutada nesta tarefa (a execução original ficou cancelada). Os itens do ambiente (SDK do sandbox e política por pasta) seguem como configuração do operador.
+
+### [x] T55 — Teste de build na própria máquina
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-13
+- Escopo: a tarefa "Ajuste o projeto para dotnet 10" falhava porque o container de teste só tinha o SDK 8; o responsável pediu que o build rode na própria máquina (ADR 0013).
+- Conclusão 2026-10-13: `HostSandbox` (runner) executa o comando da política numa cópia temporária do checkout (sem `.git`, links nem mais de 5000 arquivos ou 100 MB), com ambiente reduzido, tempo máximo, saída limitada e código 127 quando o executável não existe; `folders[...].execution = "host"` seleciona o modo por pasta (o runner relê o arquivo a cada execução); `Setup-Runner.ps1 -RunOnHost` grava a entrada e avisa do risco. Pasta `teste2` configurada com `dotnet build --nologo -v minimal` e criação/edição de `*.cs`, `*.csproj`, `*.md`; runners reiniciados.
+- Validação: `dotnet test` Runner 39/39 (novos, com o SDK real: build em cópia sem `bin`/`obj` no workspace e erro `error CS` reportado; executável ausente e timeout; token do runner não chega ao comando); `dotnet format` limpo; comando do `Setup-Runner.ps1` conferido no PowerShell 5.1.
+- Limitações: sem isolamento (rede e arquivos do usuário acessíveis ao build); o resultado depende do SDK instalado; a execução real "Ajuste para dotnet 10" com modelo não foi repetida aqui.
+
+### [x] T56 — Correção enxerga os arquivos que a execução anterior criou
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-13
+- Escopo: a correção 015f1d94 ("Ajuste o projeto para dotnet 10") terminou sem alterar nada: o agente via `readable` e `editable` vazios e tratou os padrões de `create` como válidos só para arquivos novos.
+- Causa: os padrões da política (`**/*.cs`, `**/*.csproj`) eram expandidos uma única vez, antes de restaurar a transferência da execução anterior. O `main` da pasta estava vazio, então a lista de arquivos editáveis saía vazia; `Calculadora.csproj` e `Program.cs` só existiam depois da restauração.
+- Conclusão 2026-10-13: o `RunnerCoordinator` expande os padrões de novo depois de restaurar a transferência e o checkpoint e recria as ferramentas com as listas atualizadas; o agente passa a receber esses arquivos como arquivos comuns de leitura e edição.
+- Validação: `dotnet test` Runner 40/40 (novo: arquivo criado só pela execução-pai aparece em `readable`/`editable` enviados ao modelo); `dotnet format` limpo.
+- Limitações: a correção real com modelo não foi repetida; a execução 015f1d94 permanece como falha histórica. Quem precisa de arquivos que nem o pai criou continua limitado a `readable`/`editable` explícitos ou padrões que os casem.
+
+### [x] T57 — Tarefa de análise (perguntas sobre o código)
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-13
+- Escopo: criar uma tarefa só para análise: escolher o repositório, fazer uma pergunta e receber a resposta sem alterar nada (ADR 0014).
+- Conclusão 2026-10-13: `WorkItem.Kind` (`change`/`analysis`, migração `TaskKind`), `TaskInput.kind` e `TaskDto.kind`; runner em modo análise (sem `editable`, `create` nem teste) com a nova ferramenta `search`; harness `HarnessMode.Analysis` com resultado `analysis_answered`; API recusa `write`/`test` em análise, aceita o resultado só com consulta e resposta e leva a tarefa a `Done` sem publicação nem revisão; prompt próprio; resposta até 12 000 caracteres em `agentSummary`; limite de entrada das IAs escolhidas passa a vir da máquina (96 KiB); interface com escolha "Alterar o código / Analisar o projeto" no modal, selo "Análise", botão "Analisar" e `AnswerDialog` ("Ver resposta", copiar, aviso de revisão da resposta).
+- Validação: `dotnet test` API 86/86 (novos: criação exige pasta e tipo válido; write/test/busca vazia recusados; resposta fecha a tarefa; resultado de análise recusado sem resposta ou em tarefa de mudança); Runner 43/43 (novos: busca só nos arquivos legíveis, harness de análise tolera erro de leitura e nunca escreve, coordenador sem testes e com `editable` vazio); `dotnet format`, `tsc`, `eslint`; Playwright 12/12 (novo `analysis.spec.ts` com o seletor de pasta real e a resposta simulada).
+- Limitações: nenhuma análise real com Codex ou Claude foi executada aqui; a qualidade da resposta depende do modelo e é limitada pelos 100 arquivos e 16 KiB por arquivo da política; busca é literal (sem regex); pasta sem política própria usa a política padrão do projeto.
+
+### [x] T58 — Redesenho da criação com modos de tarefa
+
+- Status: Concluída
+- Responsável: Codex; início 2026-10-13
+- Escopo: modos em linha superior, descrição e configuração alinhadas abaixo, remover grid quebrado/espaços vazios; preservar análise, mudança, seleção de pasta/IA e foco/rolagem.
+- Conclusão: seletor de tipo ocupa a largura superior, definição e configurações ficam alinhadas abaixo; consolidado o CSS acumulado em um único bloco. Modal de até 1040 px, altura limitada à viewport, corpo com rolagem e ações fixas; executar/analisar é a ação principal. Critérios preservados ao alternar modos. Mobile usa coluna única e seletor compacto. Build/tipos/lint e teste workspace-design passaram, incluindo modos análise/mudança, ordem geométrica, critérios preservados, seletores clicáveis após rolagem, ações e Escape/foco. Capturas desktop/mobile do modo análise revisadas. Frontend atualizado; sem alteração de API ou execução real de IA.
+
+### [x] T59 — Prioridade das branches no seletor
+
+- Status: Concluída
+- Responsável: Codex; início 2026-10-13
+- Escopo: main, master e develop primeiro, quando existentes; demais na ordem recebida; preservar branch atual.
+- Conclusão: sort estável com Map prioriza main/master/develop existentes e mantém as demais na ordem da API, sem criar opções ausentes ou trocar a branch atual. Lint/build/TypeScript passaram; frontend atualizado.
+
+### [x] T60 — Tarefas em sequência e análise de execução simultânea
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-14
+- Escopo: registrar tarefas encadeadas ("uma é sequência da anterior") e, ao executar uma, executar todas em ordem, cada uma a partir do resultado da anterior (ADR 0015); analisar se o projeto executa várias tarefas ao mesmo tempo ([docs/concurrent-execution.md](docs/concurrent-execution.md)).
+- Conclusão 2026-10-14: `WorkItem.PreviousTaskId` (índice único parcial) e `SequenceStartedBy` (migração `TaskSequences`); `TaskInput.previousTaskId`, `TaskDto.previousTaskId/sequenceRunning`, `POST …/sequence/start|stop`; `TaskSequences` + `SequenceWorker` avançam as etapas marcadas (idempotência `sequence-<taskId>`); a etapa seguinte usa o commit publicado da anterior como base (`StackedOn`, `LocalRepository.IsAncestorAsync`), com publicação, revisão e checkout tolerando a base atrasada e conclusão fora de ordem recusada (`previous_step_pending`); rodar uma continuação sozinha e corrigir etapa com sucessora iniciada são recusados; interface com "Continuação de…", selo "Etapa n de m", "Executar sequência", "Na fila da sequência" e "Parar sequência".
+- Análise de concorrência: fila, reivindicação (`SKIP LOCKED`), isolamento e publicação suportam execuções simultâneas; o runner executa uma por vez por projeto (laço sequencial + `worker.lock`), logo no fluxo pessoal a concorrência prática é 1; mudanças independentes na mesma pasta colidem na conclusão (`base_changed`). Opções e recomendação no documento; nada disso foi alterado.
+- Validação: `dotnet test` API 90/90 (novos: `TaskSequenceTests` com PostgreSQL e Git reais — vínculo, bifurcação, pasta diferente, início, espera, empilhamento sobre o commit publicado, correção bloqueada, interrupção por falha; `LocalMergeTests` — conclusão em ordem, `base_changed` preservado, publicações paralelas); `dotnet format` (API e testes), `has-pending-model-changes`, `tsc`, `eslint`, Playwright 13/13 (novo `sequence.spec.ts`, canal `chrome`).
+- Limitações: nenhuma sequência foi executada com Codex ou Claude reais; o teste usa execuções simuladas no banco e commits criados no Git. Sem rebase automático: se a base avançar por fora, a etapa seguinte falha com `base_changed` e a sequência para. Skills não se aplicam a sequências. A concorrência real entre runners não foi medida.
+
+### [x] T61 — Medir e reduzir os tokens enviados aos CLIs
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-14
+- Escopo: registrar o consumo real de tokens dos CLIs e enviar menos texto a cada passo do agente (ADR 0016, itens 1 a 3 do plano).
+- Conclusão 2026-10-14: Codex passa a rodar com `--json` e o consumo é lido de `turn.completed`; Claude lê `usage` do envelope; `CliUsage`, `TextModelResult.CachedInputTokens`, `ModelTurn.CachedInputTokens` (migração `ModelTurnCachedTokens`), `ExecutionProgress.cachedInputTokens` e linha "Tokens" no painel de progresso; `PromptContext` monta a visão do contexto enviada ao modelo (teste enxuto, leitura repetida, JSON sem escapes, omissão do conteúdo mais antigo entre 40 000 e 20 000 bytes) e `ModelTurnAccess` a usa; fixture dos CLIs emite uso.
+- Validação: `dotnet test` API 97/97 (novos: `PromptContextTests` — teste, leitura repetida, omissão, estabilidade do prefixo, texto legível, execução sintética 24% menor, soma de uso; asserções de tokens em `AgentSelectionTests` e `LocalIntegrationTests`); `dotnet format`, `has-pending-model-changes`, `tsc`, `eslint`; Playwright 13/13 (asserções de tokens em `kanban` e `execution-report`).
+- Limitações: nenhum agente completo foi executado com modelo real; as medições de custo fixo vêm de duas chamadas reais curtas ao Codex e uma ao Claude. A economia real depende do tamanho dos arquivos e do número de passos. Custo em dinheiro continua desconhecido para os CLIs. Não reduz o número de passos nem impõe orçamento por execução (itens 4 e 5 do plano).
