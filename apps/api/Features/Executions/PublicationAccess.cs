@@ -150,21 +150,3 @@ public sealed class PublicationAccess(AppDbContext db, TaskAccess tasks, Reposit
         return new(execution.PublicationState ?? "not_requested", execution.PublicationAttempts, execution.PublicationFailureCode, receipt);
     }
 }
-
-public static class PublicationEndpoints
-{
-    public static void MapPublication(this IEndpointRouteBuilder routes)
-    {
-        var group = routes.MapGroup("/api/v1/organizations/{organizationId:guid}/projects/{projectId:guid}/tasks/{taskId:guid}/executions/{executionId:guid}")
-            .WithTags("Executions").RequireAuthorization();
-        group.MapGet("/publication", async (Guid organizationId, Guid projectId, Guid taskId, Guid executionId,
-            ClaimsPrincipal user, PublicationAccess publication, CancellationToken ct) =>
-            await publication.ReadAsync(organizationId, projectId, taskId, executionId, user, ct)).Produces<PublicationStatus>();
-        group.MapPost("/publication", async (Guid organizationId, Guid projectId, Guid taskId, Guid executionId,
-            ClaimsPrincipal user, PublicationAccess publication, CancellationToken ct) =>
-        {
-            await publication.ReadAsync(organizationId, projectId, taskId, executionId, user, ct);
-            return await publication.PublishAsync(executionId, ct);
-        }).Produces<PublicationStatus>();
-    }
-}

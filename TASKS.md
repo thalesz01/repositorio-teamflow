@@ -41,7 +41,7 @@ Referência: commit/PR quando houver, ou entrega local sem commit
 | Memória | T21–T24 | Conhecimento com fontes, recuperação e portabilidade |
 | Piloto | T25 | Fluxo completo validado com limites explícitos |
 
-Próximo passo: nenhum item obrigatório pendente. T01–T61 estão concluídas. Esta ordem não autoriza trabalho paralelo automaticamente.
+Próximo passo: nenhum item obrigatório pendente. T01–T63 estão concluídas. Esta ordem não autoriza trabalho paralelo automaticamente.
 
 ## Tarefas
 
@@ -783,3 +783,12 @@ Por decisão explícita do responsável, a T25 passa a exigir smoke de Codex CLI
 - Conclusão 2026-10-14: Codex passa a rodar com `--json` e o consumo é lido de `turn.completed`; Claude lê `usage` do envelope; `CliUsage`, `TextModelResult.CachedInputTokens`, `ModelTurn.CachedInputTokens` (migração `ModelTurnCachedTokens`), `ExecutionProgress.cachedInputTokens` e linha "Tokens" no painel de progresso; `PromptContext` monta a visão do contexto enviada ao modelo (teste enxuto, leitura repetida, JSON sem escapes, omissão do conteúdo mais antigo entre 40 000 e 20 000 bytes) e `ModelTurnAccess` a usa; fixture dos CLIs emite uso.
 - Validação: `dotnet test` API 97/97 (novos: `PromptContextTests` — teste, leitura repetida, omissão, estabilidade do prefixo, texto legível, execução sintética 24% menor, soma de uso; asserções de tokens em `AgentSelectionTests` e `LocalIntegrationTests`); `dotnet format`, `has-pending-model-changes`, `tsc`, `eslint`; Playwright 13/13 (asserções de tokens em `kanban` e `execution-report`).
 - Limitações: nenhum agente completo foi executado com modelo real; as medições de custo fixo vêm de duas chamadas reais curtas ao Codex e uma ao Claude. A economia real depende do tamanho dos arquivos e do número de passos. Custo em dinheiro continua desconhecido para os CLIs. Não reduz o número de passos nem impõe orçamento por execução (itens 4 e 5 do plano).
+
+### [x] T63 — Padrão de endpoints enxutos nas demais features
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-14
+- Escopo: replicar nas features da API o padrão de endpoints enxutos (AGENTS.md §6), sem mudar comportamento nem contrato HTTP. Parte do mesmo objetivo de T62; branch própria a partir da `develop`.
+- Conclusão 2026-10-14: `OrganizationService`, `ProjectService`, `WorkspaceService`, `RunnerService` (credenciais e protocolo claim/heartbeat), `RepositoryService` e `ProfileService` concentram as regras que estavam nos endpoints; DTOs de Organizations, Projects e Workspace foram para `<Feature>Contracts.cs`; `ProfileDto.From` e `GitDto.From` substituem os `ToDto` dos endpoints (teste `ApiClient` atualizado); as consultas soltas de `Memory` (listar itens, listar índices, ler versão) foram para `MemoryAccess` e `MemoryIndexAccess` e a listagem de execuções para `ExecutionScheduler`; `ProgressEndpoints`, `PublicationEndpoints` e `ReviewEndpoints` saíram dos arquivos de serviço para arquivos próprios e as rotas de revisão deixaram o `foreach` e ficaram explícitas. `Auth` já estava enxuto e não mudou.
+- Validação: `dotnet build --no-restore` → sem avisos; `dotnet format` da API e do projeto de testes `--verify-no-changes` → sem diferenças; `dotnet test` API → 97/97 após cada grupo; OpenAPI exportado da `develop` e desta branch (API em Development, porta 5098, banco inexistente, content root isolado) → JSON equivalente, só a ordem das chaves muda. A comparação achou um schema de resposta perdido em `GET /projects/{projectId}` (handler passou a retornar `IResult`), corrigido com `.Produces<ProjectDto>()`.
+- Limitações: sem testes unitários novos; a cobertura vem dos testes HTTP existentes. `contracts/api/openapi.json` e o cliente do `apps/web` não foram regenerados, pois o contrato não mudou. `ModelTurnAccess`, `PublicationAccess` e `ReviewAccess` continuam grandes e mudam em tarefa própria. Esta branch parte da `develop` sem T62; ao integrar as duas, o `TASKS.md` e o `Program.cs` podem pedir resolução manual simples.

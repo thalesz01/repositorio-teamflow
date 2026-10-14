@@ -10,7 +10,7 @@ public static class ProjectEndpoints
         var group = routes.MapGroup("/api/v1/organizations/{organizationId:guid}/projects").WithTags("Projects").RequireAuthorization();
         group.MapGet("/", ListAsync).Produces<PageResult<ProjectDto>>();
         group.MapPost("/", CreateAsync).Produces<ProjectDto>(201);
-        group.MapGet("/{projectId:guid}", GetAsync);
+        group.MapGet("/{projectId:guid}", GetAsync).Produces<ProjectDto>();
         group.MapPut("/{projectId:guid}", UpdateAsync).Produces<ProjectDto>();
         group.MapDelete("/{projectId:guid}", DeleteAsync);
     }
