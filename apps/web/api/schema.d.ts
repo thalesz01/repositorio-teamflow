@@ -746,6 +746,123 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/sequence/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                    taskId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskDto"][];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/sequence/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                    taskId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskDto"][];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                    taskId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SkillInfo"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/executions": {
         parameters: {
             query?: never;
@@ -888,6 +1005,44 @@ export interface paths {
                     content: {
                         "application/json": components["schemas"]["ExecutionProgress"];
                     };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/executions/{executionId}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                    taskId: string;
+                    executionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
                 };
             };
         };
@@ -2474,6 +2629,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/profiles/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CliAgent"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organizationId}/projects/{projectId}/profiles/machine": {
         parameters: {
             query?: never;
@@ -2652,6 +2845,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AgentChoice: {
+            /** @default codex */
+            provider: string;
+            /** @default default */
+            model: string;
+            effort?: null | string;
+        };
         AgentToolPolicy: {
             readable: string[];
             editable: string[];
@@ -2742,6 +2942,18 @@ export interface components {
              */
             leaseSeconds: number | string;
         };
+        CliAgent: {
+            id: string;
+            name: string;
+            installed: boolean;
+            authenticated: boolean;
+            enabled: boolean;
+            models: components["schemas"]["CliModel"][];
+        };
+        CliModel: {
+            id: string;
+            efforts: string[];
+        };
         CodexMachineStatus: {
             installed: boolean;
             authenticated: boolean;
@@ -2802,6 +3014,7 @@ export interface components {
             failureCode: null | string;
             /** Format: uuid */
             parentExecutionId?: null | string;
+            skill?: null | string;
         };
         ExecutionInput: {
             /** Format: uuid */
@@ -2831,6 +3044,7 @@ export interface components {
             /** Format: uuid */
             parentExecutionId?: null | string;
             feedback?: null | string;
+            skill?: null | string;
         };
         ExecutionProgress: {
             execution: components["schemas"]["ExecutionDto"];
@@ -2843,6 +3057,8 @@ export interface components {
             events: components["schemas"]["ProgressEvent"][];
             nextCursor: null | string;
             agentSummary?: null | string;
+            /** Format: int32 */
+            cachedInputTokens?: null | number | string;
         };
         ExecutionResultInput: {
             /** Format: uuid */
@@ -3334,6 +3550,15 @@ export interface components {
             userId: string;
             email: string;
         };
+        SkillInfo: {
+            id: string;
+            name: string;
+            description: string;
+            source: string;
+            /** Format: int32 */
+            bytes: number | string;
+            preview: string;
+        };
         TaskDto: {
             /** Format: uuid */
             id: string;
@@ -3357,6 +3582,14 @@ export interface components {
             analysisId?: null | string;
             folderPath?: null | string;
             baseBranch?: null | string;
+            /** Format: uuid */
+            agentProfileId?: null | string;
+            /** @default change */
+            kind: string;
+            /** Format: uuid */
+            previousTaskId?: null | string;
+            /** @default false */
+            sequenceRunning: boolean;
         };
         TaskInput: {
             title: string;
@@ -3370,6 +3603,10 @@ export interface components {
             folderPath?: null | string;
             baseBranch?: null | string;
             stage?: null | components["schemas"]["TaskStage"];
+            ai?: null | components["schemas"]["AgentChoice"];
+            kind?: null | string;
+            /** Format: uuid */
+            previousTaskId?: null | string;
         };
         /** @enum {unknown} */
         TaskStage: "intake" | "analysis" | "ready" | "execution" | "review" | "awaitingMerge" | "done" | "blocked" | "failed" | "cancelled";

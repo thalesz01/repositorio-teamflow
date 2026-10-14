@@ -5,6 +5,11 @@ export type TaskItem = Schema["TaskDto"];
 export type Stage = Schema["TaskStage"];
 
 const messages: Record<string, string> = {
+  invalid_skill: "A skill escolhida não está mais disponível para esta tarefa. Atualize a lista e escolha outra.",
+  cli_not_ready: "Instale, faça login e habilite a IA escolhida nesta máquina.",
+  invalid_agent_selection: "Escolha uma combinação disponível de IA, modelo e esforço.",
+  claude_unavailable: "Verifique a instalação e o login do Claude Code nesta máquina.",
+  claude_failed: "O Claude Code não concluiu a interação. Verifique o login e o acesso ao modelo.",
   codex_machine_unavailable: "Verifique a instalação, o login e a habilitação do Codex nesta máquina.",
   context_source_changed: "Uma fonte foi alterada, arquivada ou revogada. Analise a demanda novamente.",
   analysis_not_complete: "Resolva as perguntas e revise a análise antes de criar a tarefa.",
@@ -33,6 +38,11 @@ const messages: Record<string, string> = {
   publication_in_progress: "Esta execução já está sendo publicada. Aguarde a atualização.",
   publication_attempt_limit: "O limite de tentativas foi atingido. O administrador precisa reconciliar a branch da execução.",
   publication_evidence_missing: "As evidências confirmadas desta execução estão incompletas.",
+  sequence_empty: "A sequência precisa de pelo menos duas tarefas ligadas e uma etapa pronta para executar.",
+  sequence_branch: "Essa tarefa já tem uma próxima etapa.",
+  invalid_sequence: "Uma sequência liga tarefas de alteração da mesma pasta; a etapa anterior não pode estar falha ou cancelada.",
+  previous_step_pending: "Conclua a etapa anterior da sequência primeiro, ou execute a sequência inteira.",
+  next_step_started: "A próxima etapa da sequência já começou. Corrija esta etapa antes de executar a seguinte.",
   base_changed: "A branch base mudou. As alterações precisam ser revalidadas antes de publicar.",
   branch_conflict: "A branch da execução foi alterada externamente. É necessário reconciliá-la.",
   merge_disabled: "Concluir pelo app está desligado neste servidor. O operador precisa ligar Local:EnableMerge (ou fazer o merge com git merge --ff-only).",

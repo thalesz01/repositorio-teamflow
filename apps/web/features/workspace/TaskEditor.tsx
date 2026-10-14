@@ -29,6 +29,5 @@ export function TaskEditor({ formId, task, busy, onSave }: {
       <label>Resultado esperado<textarea name="criteria" defaultValue={task.acceptanceCriteria.join("\n")} rows={3} required /></label>
       <p className="hint field-hint">Um item por linha.</p>
     </fieldset>
-    {task.folderPath && <p className="hint">Pasta: <code>{task.folderPath}</code>{task.baseBranch ? <> · branch <code>{task.baseBranch}</code></> : null}</p>}
   </form>;
 }

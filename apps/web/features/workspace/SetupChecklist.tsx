@@ -7,12 +7,15 @@ import { api, type Schema } from "./api";
 type Check = "loading" | "ready" | "pending";
 type Step = { id: string; title: string; state: Check; detail: string; command?: string };
 
+const agentReady = (agent: Schema["CliAgent"]) => agent.installed && agent.authenticated && agent.enabled;
+const agentLine = (agent: Schema["CliAgent"]) => `${agent.name}: ${!agent.installed ? "não encontrado" : !agent.authenticated ? `falta login (${agent.id === "claude" ? "claude auth login" : "codex login"})` : !agent.enabled ? `desabilitado no servidor (${agent.id === "claude" ? "Claude" : "Codex"}:EnableRequests)` : "pronto"}`;
+
 /** What has to be running before a task can execute. The folder is chosen per task, so it is no longer part of the setup. */
 export function SetupChecklist({ organizationId, projectId, active, onCodex }: {
   organizationId: string; projectId: string; active: boolean; onCodex: (ready: boolean) => void;
 }) {
   const path = `/organizations/${organizationId}/projects/${projectId}`;
-  const [machine, setMachine] = useState<Schema["CodexMachineStatus"] | undefined>();
+  const [agents, setAgents] = useState<Schema["CliAgent"][] | undefined>();
   const [runner, setRunner] = useState<Schema["RunnerStatusDto"] | undefined>();
   const [copied, setCopied] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -22,14 +25,15 @@ export function SetupChecklist({ organizationId, projectId, active, onCodex }: {
     const controller = new AbortController();
     async function refresh(signal: AbortSignal) {
       const [codex, runners] = await Promise.allSettled([
-        api<Schema["CodexMachineStatus"]>(`${path}/profiles/machine`, { signal }),
+        api<Schema["CliAgent"][]>(`${path}/profiles/agents`, { signal }),
         api<Schema["RunnerStatusDto"]>(`${path}/runners/status`, { signal }),
       ]);
       if (signal.aborted) return;
-      const status = codex.status === "fulfilled" ? codex.value : undefined;
-      setMachine(status);
+      const list = codex.status === "fulfilled" ? codex.value : undefined;
+      setAgents(list);
       setRunner(runners.status === "fulfilled" ? runners.value : undefined);
-      onCodex(!!status && status.installed && status.authenticated && status.enabled);
+      // Tasks created before the AI choice still run through the machine's Codex binding.
+      onCodex(!!list?.some(agent => agent.id === "codex" && agentReady(agent)));
       setRefreshing(false);
     }
     void refresh(controller.signal);
@@ -37,12 +41,12 @@ export function SetupChecklist({ organizationId, projectId, active, onCodex }: {
     return () => { controller.abort(); clearInterval(timer); };
   }, [active, path, tick, onCodex]);
 
-  const known = machine !== undefined && runner !== undefined;
+  const known = agents !== undefined && runner !== undefined;
   const setup = `./scripts/Setup-Runner.ps1 -OrganizationId ${organizationId} -ProjectId ${projectId}`;
-  const codexReady = !!machine && machine.installed && machine.authenticated && machine.enabled;
+  const anyAgentReady = !!agents?.some(agentReady);
   const steps: Step[] = [
-    { id: "codex", title: "Codex da máquina", state: machine === undefined ? "loading" : codexReady ? "ready" : "pending",
-      detail: !machine ? "Verificando…" : !machine.installed ? "Codex não encontrado neste computador." : !machine.authenticated ? "Falta entrar com `codex login`." : !machine.enabled ? "Execução desabilitada no servidor (Codex:EnableRequests)." : "Instalado, autenticado e habilitado." },
+    { id: "ai", title: "IA da máquina", state: agents === undefined ? "loading" : anyAgentReady ? "ready" : "pending",
+      detail: !agents ? "Verificando…" : agents.map(agentLine).join(" · ") + (anyAgentReady ? "" : ". Instale e entre em pelo menos uma delas.") },
     { id: "runner", title: "Runner", state: runner === undefined ? "loading" : runner.online ? "ready" : "pending",
       detail: !runner ? "Verificando…" : runner.online ? "Ativo: pronto para executar tarefas." : runner.configured ? "Configurado, mas parado. Inicie tudo com um comando." : "Ainda não configurado. Ele executa as tarefas em uma cópia isolada da sua pasta.",
       command: runner?.online ? undefined : runner?.configured ? "./scripts/Start-TeamFlow.ps1" : setup },
@@ -53,7 +57,7 @@ export function SetupChecklist({ organizationId, projectId, active, onCodex }: {
     catch { setCopied(null); }
   }
   if (!active && !known) return null;
-  if (ready) return <p className="env-strip" role="status"><span className="badge success">Ambiente pronto</span>Codex e runner funcionando. Você já pode executar tarefas.</p>;
+  if (ready) return <p className="env-strip" role="status"><span className="badge success">Ambiente pronto</span>IA e runner funcionando. Você já pode executar tarefas.</p>;
   return <section className="card setup" aria-label="Primeiros passos">
     <div className="card-header"><div><h2>Primeiros passos</h2><p>Falta pouco para executar tarefas.</p></div>
       <button className="sm" style={{ marginLeft: "auto" }} onClick={() => { setRefreshing(true); setTick(value => value + 1); }} disabled={refreshing}>{refreshing ? <span className="spinner" aria-hidden="true" /> : <Icon name="refresh" size="sm" />}Verificar de novo</button></div>

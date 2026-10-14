@@ -7,9 +7,7 @@ const diff = "diff --git a/add.sh b/add.sh\nindex 1111111..2222222 100644\n--- a
 test("criar, executar, corrigir com comentários e concluir", async ({ page }) => {
   const repository = createRepository();
   await signUp(page, "ui");
-  // The machine check is stubbed ready: the real Codex login is not part of the browser test.
-  await page.route("**/profiles/machine", route => route.request().method() === "GET"
-    ? route.fulfill({ json: { installed: true, authenticated: true, enabled: true } }) : route.fallback());
+  // The API under test runs with the Codex fixture executable (see docs/development.md), so the AI check is real.
 
   // 1. Criar: the folder travels with the task.
   await page.getByRole("button", { name: "Nova tarefa", exact: true }).click();
@@ -38,6 +36,7 @@ test("criar, executar, corrigir com comentários e concluir", async ({ page }) =
   await page.getByRole("tabpanel", { name: "Execuções" }).getByRole("button", { name: "Ver progresso", exact: true }).click();
   const progress = page.getByRole("region", { name: "Progresso da execução", exact: true });
   await expect(progress.getByText("Atualização ao vivo", { exact: true })).toBeVisible();
+  await expect(progress.getByText("Tokens: 0 de entrada (0 em cache) · 0 de saída", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Fechar detalhe", exact: true }).click();
 
   // The runner is not part of the browser test: the finished execution, its review and the diff are fixtures.

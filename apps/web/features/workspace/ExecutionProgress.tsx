@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ExecutionReportDialog } from "./ExecutionReportDialog";
 import { Alert } from "./ui";
 import { api, errorMessage, type Schema } from "./api";
 
@@ -11,7 +12,16 @@ const stateLabels: Record<Schema["ExecutionState"], string> = {
 };
 const toolLabels: Record<string, string> = { read: "Leitura", write: "Escrita", test: "Testes" };
 
+const tokens = (value: number | string) => Number(value).toLocaleString("pt-BR");
+// What the CLI reported for the model calls so far; the cached part of the input is what the provider did not have to process again.
+function tokenSummary(progress: Schema["ExecutionProgress"]) {
+  if (progress.inputTokens == null || progress.outputTokens == null) return "Tokens: não informados";
+  const cached = progress.cachedInputTokens == null ? "" : ` (${tokens(progress.cachedInputTokens)} em cache)`;
+  return `Tokens: ${tokens(progress.inputTokens)} de entrada${cached} · ${tokens(progress.outputTokens)} de saída`;
+}
+
 export function ExecutionProgress({ path }: { path: string }) {
+  const [reportPath, setReportPath] = useState<string | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [connection, setConnection] = useState("Conectando…");
@@ -62,7 +72,8 @@ export function ExecutionProgress({ path }: { path: string }) {
       {progress && <>
         <span>{stateLabels[progress.execution.state]} · tentativa {progress.execution.attempt}</span>
         <span>Custo estimado: {progress.estimatedCostUsd === null ? "desconhecido" : `US$ ${Number(progress.estimatedCostUsd).toFixed(6)}`}</span>
-        {progress.execution.failureCode && <span>Motivo: {progress.execution.failureCode}</span>}
+        <span>{tokenSummary(progress)}</span>
+        {progress.execution.failureCode && <span>Motivo: {progress.execution.failureCode === "internal_error" ? "Falha interna na execução" : progress.execution.failureCode}</span>}
       </>}
     </div>
     {error && <Alert>{error}</Alert>}
@@ -70,8 +81,9 @@ export function ExecutionProgress({ path }: { path: string }) {
     <ol className="timeline">{events.map(event => <li key={event.eventId} data-ok={event.succeeded === null ? undefined : String(event.succeeded)}>
       <span className="what">{event.tool ? toolLabels[event.tool] ?? event.tool : "Início"}{event.path ? ` · ${event.path}` : ""}{event.succeeded !== null && (event.succeeded ? " · passou" : " · falhou")}</span>
       <span className="when"><time dateTime={event.timestamp}>{new Date(event.timestamp).toLocaleTimeString()}</time> · tentativa {event.attempt}
-        {event.hash && <> · hash {event.hash.slice(0, 12)}</>} · <a href={`/api/v1${path}/reports/${event.eventId}`}>Relatório</a></span>
+        {event.hash && <> · hash {event.hash.slice(0, 12)}</>} · <button className="report-link" onClick={() => setReportPath(`${path}/report`)}>Relatório</button></span>
     </li>)}</ol>
-    <p className="hint">Checkpoints e métricas persistidos. Conteúdo de arquivos e saídas livres das ferramentas não são exibidos.</p>
+    <p className="hint">Checkpoints e métricas persistidos. Abra o relatório para consultar o diagnóstico dos testes. Relatórios antigos podem não conter a saída do comando.</p>
+    {reportPath && <ExecutionReportDialog path={reportPath} onClose={() => setReportPath(null)} />}
   </section>;
 }

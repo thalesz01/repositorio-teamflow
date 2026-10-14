@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ReviewDialog } from "../review/ReviewDialog";
+import { AnswerDialog } from "./AnswerDialog";
 import { MemoryPanel } from "./MemoryPanel";
-import { NewTaskDialog, type NewTask } from "./NewTaskDialog";
+import { NewTaskDialog, type NewTask, type PreviousStep } from "./NewTaskDialog";
 import { SetupChecklist } from "./SetupChecklist";
 import { TaskDrawer, type DrawerTab } from "./TaskDrawer";
 import { Alert, EmptyState, Icon, PageHeader } from "./ui";
@@ -37,6 +38,7 @@ export function TaskBoard({ project, view }: { project: Schema["ProjectDto"]; vi
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [creating, setCreating] = useState(false);
   const [review, setReview] = useState<Review>(null);
+  const [answer, setAnswer] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -84,15 +86,35 @@ export function TaskBoard({ project, view }: { project: Schema["ProjectDto"]; vi
     }
   }
 
-  async function runTask(task: TaskItem) {
+  // Steps of one sequence, first step first.
+  function chainOf(task: TaskItem) {
+    const byId = new Map(tasks.map(item => [item.id, item]));
+    let first = task;
+    for (let guard = 0; first.previousTaskId && byId.has(first.previousTaskId) && guard < 1000; guard++) first = byId.get(first.previousTaskId)!;
+    const next = new Map(tasks.filter(item => item.previousTaskId).map(item => [item.previousTaskId!, item]));
+    const steps = [first];
+    for (let step = next.get(first.id); step && steps.length < 1000; step = next.get(step.id)) steps.push(step);
+    return steps;
+  }
+  const inSequence = (task: TaskItem) => !!task.previousTaskId || tasks.some(item => item.previousTaskId === task.id);
+  const stepOf = (task: TaskItem) => { if (!inSequence(task)) return undefined; const steps = chainOf(task); return { n: steps.findIndex(step => step.id === task.id) + 1, total: steps.length }; };
+  const continuable: PreviousStep[] = tasks.filter(task => task.kind === "change" && task.folderPath && !tasks.some(item => item.previousTaskId === task.id)
+    && !["failed", "cancelled", "blocked"].includes(task.stage)).map(task => ({ id: task.id, title: task.title, folderPath: task.folderPath!, baseBranch: task.baseBranch ?? null }));
+
+  async function runTask(task: TaskItem, skill: string | null = null) {
+    if (inSequence(task)) {
+      if (skill) throw new Error("Skills ainda não se aplicam a sequências. Execute as etapas uma a uma ou sem skill.");
+      await api<TaskItem[]>(`${path}/${task.id}/sequence/start`, { method: "POST" });
+      return;
+    }
     let current = task;
     for (let next = towardsReady[current.stage]; next; next = towardsReady[current.stage]) {
       current = await api<TaskItem>(`${path}/${current.id}/transition`, { method: "POST", body: JSON.stringify({ stage: next, version: current.version } satisfies Schema["TransitionInput"]) });
     }
-    const versionKey = `${current.id}:${current.version}:${profileId}`;
+    const versionKey = `${current.id}:${current.version}:${profileId}:${skill ?? ""}`;
     const key = keys.get(versionKey) ?? crypto.randomUUID();
     keys.set(versionKey, key);
-    const input: Schema["ExecutionInput"] = { version: current.version, maxDurationSeconds: 900, maxAttempts: 3, maxSteps: 50, maxCostUsd: 5, agentProfileId: profileId || null };
+    const input: Schema["ExecutionInput"] = { version: current.version, maxDurationSeconds: 900, maxAttempts: 3, maxSteps: 50, maxCostUsd: 5, agentProfileId: current.agentProfileId ?? (profileId || null), skill };
     await api<Schema["ExecutionDto"]>(`${path}/${current.id}/executions/`, { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify(input) });
   }
 
@@ -110,6 +132,10 @@ export function TaskBoard({ project, view }: { project: Schema["ProjectDto"]; vi
     await perform(async () => {
       await api<TaskItem>(`${path}/${selected.id}`, { method: "PUT", body: JSON.stringify({ ...input, version: selected.version } satisfies Schema["TaskUpdate"]) });
     });
+  }
+
+  async function stopSequence(task: TaskItem) {
+    await perform(async () => { await api<TaskItem[]>(`${path}/${task.id}/sequence/stop`, { method: "POST" }); });
   }
 
   async function cancelTask(task: TaskItem) {
@@ -155,11 +181,13 @@ export function TaskBoard({ project, view }: { project: Schema["ProjectDto"]; vi
               <div className={`lane-body${!loaded ? " loading-lanes" : ""}`}>
                 {!loaded && <><div className="skeleton" /><div className="skeleton" /></>}
                 {loaded && !items.length && <p className="lane-empty">{needle ? "Nada neste filtro" : lane.hint || "Nenhuma tarefa"}</p>}
-                {items.map(task => <TaskCard key={task.id} task={task} busy={busy} canRun={codexReady}
+                {items.map(task => <TaskCard key={task.id} task={task} step={stepOf(task)} busy={busy} canRun={codexReady || !!task.agentProfileId}
+                  onStop={() => void stopSequence(task)}
                   onOpen={() => setDrawer({ id: task.id, tab: "details" })}
                   onProgress={() => setDrawer({ id: task.id, tab: "executions" })}
                   onRun={() => void perform(() => runTask(task))}
-                  onReview={() => void openReview(task)} />)}
+                  onReview={() => void openReview(task)}
+                  onAnswer={() => setAnswer(task.id)} />)}
               </div>
             </section>;
           })}
@@ -169,19 +197,22 @@ export function TaskBoard({ project, view }: { project: Schema["ProjectDto"]; vi
       <PageHeader eyebrow="Conhecimento" title="Memória do projeto" description="Guarde decisões, valide fontes e reutilize o que já foi aprendido." />
       <MemoryPanel path={projectPath} />
     </section>
-    {creating && <NewTaskDialog projectPath={projectPath} canRun={codexReady && !!profileId} onCreate={create} onClose={() => setCreating(false)} />}
-    {drawer && selected && <TaskDrawer error={error} task={selected} busy={busy} path={path}
+    {creating && <NewTaskDialog projectPath={projectPath} canRun={codexReady && !!profileId} steps={continuable} onCreate={create} onClose={() => setCreating(false)} />}
+    {answer && tasks.find(task => task.id === answer) && <AnswerDialog taskPath={path} task={tasks.find(task => task.id === answer)!} onClose={() => setAnswer(null)} />}
+    {drawer && selected && <TaskDrawer error={error} task={selected} busy={busy} path={path} runnable={laneOf(selected.stage) === "created"} canRun={codexReady || !!selected.agentProfileId}
+      onRun={async skill => { await perform(() => runTask(selected, skill)); setDrawer(null); }}
       tab={drawer.tab} onTab={tab => setDrawer({ ...drawer, tab })}
-      onSave={save} onCancelTask={cancelTask} onReview={() => { setDrawer(null); void openReview(selected); }} onClose={() => setDrawer(null)}
+      onSave={save} onCancelTask={cancelTask} onReview={() => { setDrawer(null); void openReview(selected); }} onAnswer={() => { setDrawer(null); setAnswer(selected.id); }} onClose={() => setDrawer(null)}
       onCancelExecution={executionId => perform(async () => { await api<Schema["ExecutionDto"]>(`${path}/${selected.id}/executions/${executionId}/cancel`, { method: "POST" }); })} />}
     {review && <ReviewDialog scope={{ organizationId: project.organizationId, projectId: project.id, taskId: review.taskId, executionId: review.executionId }}
       onClose={() => setReview(null)} onChanged={() => void refresh().catch(failure => setError(errorMessage(failure)))} />}
   </>;
 }
 
-function TaskCard({ task, busy, canRun, onOpen, onProgress, onRun, onReview }: {
-  task: TaskItem; busy: boolean; canRun: boolean; onOpen: () => void; onProgress: () => void; onRun: () => void; onReview: () => void;
+function TaskCard({ task, step, busy, canRun, onOpen, onProgress, onRun, onStop, onReview, onAnswer }: {
+  task: TaskItem; step?: { n: number; total: number }; busy: boolean; canRun: boolean; onOpen: () => void; onProgress: () => void; onRun: () => void; onStop: () => void; onReview: () => void; onAnswer: () => void;
 }) {
+  const analysis = task.kind === "analysis";
   const folder = folderName(task.folderPath);
   const failed = task.stage === "failed";
   return <article className="task-card" data-stage={task.stage}>
@@ -190,12 +221,18 @@ function TaskCard({ task, busy, canRun, onOpen, onProgress, onRun, onReview }: {
       {task.description && <span className="task-desc">{task.description}</span>}
     </button>
     <div className="task-card-meta">
+      {analysis && <span className="badge info plain">Análise</span>}
+      {step && <span className="badge plain" title="Tarefas ligadas: cada etapa parte do resultado da anterior"><Icon name="link" size="sm" />Etapa {step.n} de {step.total}</span>}
+      {task.sequenceRunning && <span className="badge warning">Na fila da sequência</span>}
       {folder && <span className="chip" title={task.folderPath ?? undefined}><Icon name="folder" size="sm" />{folder}</span>}
       {(failed || task.stage === "blocked" || task.stage === "awaitingMerge") && <span className={`badge ${failed ? "danger" : "warning"}`}>{stageLabels[task.stage]}</span>}
     </div>
-    {laneOf(task.stage) === "created" && <div className="task-card-actions"><button className="primary sm" onClick={onRun} disabled={busy || !canRun}
-      title={canRun ? undefined : "Ative o Codex da máquina (veja Primeiros passos)"}><Icon name="play" size="sm" />{failed ? "Tentar de novo" : "Executar"}</button></div>}
+    {laneOf(task.stage) === "created" && <div className="task-card-actions">{task.sequenceRunning
+      ? <button className="sm" onClick={onStop} disabled={busy}>Parar sequência</button>
+      : <button className="primary sm" onClick={onRun} disabled={busy || !canRun}
+        title={canRun ? undefined : "Ative o Codex da máquina (veja Primeiros passos)"}><Icon name="play" size="sm" />{failed ? "Tentar de novo" : analysis ? "Analisar" : step ? "Executar sequência" : "Executar"}</button>}</div>}
     {task.stage === "execution" && <div className="task-card-actions"><button className="sm" onClick={onProgress}><Icon name="clock" size="sm" />Ver progresso</button></div>}
+    {analysis && task.stage === "done" && <div className="task-card-actions"><button className="primary sm" onClick={onAnswer}><Icon name="eye" size="sm" />Ver resposta</button></div>}
     {laneOf(task.stage) === "fix" && <div className="task-card-actions"><button className="primary sm" onClick={onReview} disabled={busy}><Icon name="eye" size="sm" />Revisar e concluir</button></div>}
   </article>;
 }
