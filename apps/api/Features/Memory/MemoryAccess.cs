@@ -97,6 +97,26 @@ public sealed partial class MemoryAccess(AppDbContext db, ProjectAccess projects
             && (archived || m.ArchivedAt == null), ct) ?? throw new ApiException(404, "memory_not_found", "Memory source not found.");
     }
 
+    public async Task<PageResult<MemoryDto>> ListAsync(Guid organizationId, Guid projectId, int? page, int? pageSize, bool? archived, ClaimsPrincipal user, CancellationToken ct)
+    {
+        await projects.RequireAsync(organizationId, projectId, user, ct);
+        var (number, size) = Pagination.Validate(page, pageSize);
+        var query = db.MemoryItems.AsNoTracking().Where(m => m.OrganizationId == organizationId && m.ProjectId == projectId
+            && (archived == true ? m.ArchivedAt != null : m.ArchivedAt == null));
+        var items = await query.OrderByDescending(m => m.UpdatedAt).ThenBy(m => m.Id).Skip((number - 1) * size).Take(size).ToListAsync(ct);
+        return new PageResult<MemoryDto>(items.Select(ToDto).ToList(), number, size, await query.CountAsync(ct));
+    }
+
+    public async Task<MemoryVersionDto> VersionAsync(Guid organizationId, Guid projectId, Guid id, Guid version, ClaimsPrincipal user, CancellationToken ct)
+    {
+        await RequireAsync(organizationId, projectId, id, user, ct);
+        var revision = await db.MemoryRevisions.AsNoTracking().SingleOrDefaultAsync(r => r.ItemId == id && r.Version == version
+            && r.OrganizationId == organizationId && r.ProjectId == projectId, ct)
+            ?? throw new ApiException(404, "memory_version_not_found", "Source version not found.");
+        return new MemoryVersionDto(revision.Version, revision.Title, revision.Content, revision.ContentHash, revision.Status,
+            revision.Archived, revision.AuthorId, revision.CreatedAt);
+    }
+
     public async Task<MemoryDetail> UpdateAsync(Guid organizationId, Guid projectId, Guid id, MemoryUpdate input, ClaimsPrincipal user, CancellationToken ct)
     {
         var item = await RequireAsync(organizationId, projectId, id, user, ct);

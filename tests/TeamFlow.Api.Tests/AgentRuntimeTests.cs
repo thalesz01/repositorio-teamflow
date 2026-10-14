@@ -97,7 +97,7 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
     {
         using var scope = setup.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        await db.WorkItems.Where(t => t.Id == setup.Execution.TaskId).ExecuteUpdateAsync(set => set.SetProperty(t => t.Kind, "analysis"));
+        await db.WorkItems.Where(t => t.Id == setup.Execution.TaskId).ExecuteUpdateAsync(set => set.SetProperty(t => t.Kind, TaskKind.Analysis));
         await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"Executions\" SET \"TaskSnapshot\" = jsonb_set(\"TaskSnapshot\"::jsonb, '{{kind}}', '\"analysis\"')::jsonb WHERE \"Id\" = {setup.Execution.Id}");
     }
 
@@ -194,7 +194,7 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
         recovery.EnsureSuccessStatusCode();
         using var checkScope = setup.Factory.Services.CreateScope();
         var turn = await checkScope.ServiceProvider.GetRequiredService<AppDbContext>().ModelTurns.SingleAsync(t => t.ExecutionId == setup.Execution.Id);
-        Assert.Equal("cli", turn.BillingMode); Assert.Null(turn.EstimatedCostUsd); Assert.Equal(0, turn.ReservedUsd);
+        Assert.Equal(BillingMode.Cli, turn.BillingMode); Assert.Null(turn.EstimatedCostUsd); Assert.Equal(0, turn.ReservedUsd);
     }
 
     [Fact]
@@ -208,7 +208,7 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
         Assert.Equal(1, model.Calls);
         using var scope = setup.Factory.Services.CreateScope();
         var turn = await scope.ServiceProvider.GetRequiredService<AppDbContext>().ModelTurns.SingleAsync(t => t.ExecutionId == setup.Execution.Id);
-        Assert.Equal("cli", turn.BillingMode);
+        Assert.Equal(BillingMode.Cli, turn.BillingMode);
         Assert.Null(turn.EstimatedCostUsd);
         Assert.True(turn.ReservedUsd > 0);
     }
@@ -230,8 +230,8 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
                 Attempt = 1,
                 Sequence = 5,
                 RequestHash = new string('c', 64),
-                BillingMode = "api",
-                State = "completed"
+                BillingMode = BillingMode.Api,
+                State = ModelTurnState.Completed
             });
             await db.SaveChangesAsync();
         }
@@ -260,7 +260,7 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
         Assert.Equal(HttpStatusCode.Conflict, lost.StatusCode);
         Assert.Equal(1, model.Calls);
         using var scope = setup.Factory.Services.CreateScope();
-        Assert.Equal("uncertain", (await scope.ServiceProvider.GetRequiredService<AppDbContext>().ModelTurns.SingleAsync(t => t.ExecutionId == setup.Execution.Id)).State);
+        Assert.Equal(ModelTurnState.Uncertain, (await scope.ServiceProvider.GetRequiredService<AppDbContext>().ModelTurns.SingleAsync(t => t.ExecutionId == setup.Execution.Id)).State);
     }
 
     [Fact]

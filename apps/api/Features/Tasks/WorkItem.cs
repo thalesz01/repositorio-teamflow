@@ -1,5 +1,8 @@
 namespace TeamFlow.Api.Features.Tasks;
 
+// "change" edits code and ends in review; "analysis" only reads the folder and ends with an answer (ADR 0014).
+public enum TaskKind { Change, Analysis }
+
 public enum TaskStage { Intake, Analysis, Ready, Execution, Review, AwaitingMerge, Done, Blocked, Failed, Cancelled }
 
 public sealed class WorkItem
@@ -13,8 +16,7 @@ public sealed class WorkItem
     public Guid? PreviousTaskId { get; set; }
     // Set while the step waits for its turn in a sequence that the person started; cleared when the sequence stops.
     public Guid? SequenceStartedBy { get; set; }
-    // "change" edits code and ends in review; "analysis" only reads the folder and ends with an answer (ADR 0014).
-    public string Kind { get; set; } = "change";
+    public TaskKind Kind { get; set; } = TaskKind.Change;
     // Folder and base branch chosen when the task was created; null for tasks that use the project connection.
     public Guid? RepositoryConnectionId { get; set; }
     public string? FolderPath { get; set; }

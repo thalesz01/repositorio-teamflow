@@ -41,9 +41,9 @@ public sealed class ExecutionResultAccess(AppDbContext db, LeaseAccess leases, T
             var context = JsonSerializer.Deserialize<CheckpointContext>(checkpoint.Context, new JsonSerializerOptions(JsonSerializerDefaults.Web))
                 ?? throw new InvalidDataException("Invalid persisted checkpoint.");
             var kind = await db.WorkItems.AsNoTracking().Where(t => t.Id == execution.TaskId).Select(t => t.Kind).SingleAsync(ct);
-            if (input.Reason == "analysis_answered" ? kind != "analysis" || !TestEvidence.IsAnswered(context) || !await HasAnswerAsync(id, ct)
-                : kind == "analysis" || !TestEvidence.IsValidated(context)) throw InvalidEvidence();
-            if (await db.ModelTurns.AnyAsync(t => t.ExecutionId == id && (t.State != "completed" || (t.BillingMode == "api" && t.EstimatedCostUsd == null)), ct))
+            if (input.Reason == "analysis_answered" ? kind != TaskKind.Analysis || !TestEvidence.IsAnswered(context) || !await HasAnswerAsync(id, ct)
+                : kind == TaskKind.Analysis || !TestEvidence.IsValidated(context)) throw InvalidEvidence();
+            if (await db.ModelTurns.Where(t => t.ExecutionId == id).AnyAsync(ModelTurn.Unresolved, ct))
                 throw new ApiException(409, "model_outcome_uncertain", "Cannot validate an execution with unknown model consumption.");
             if (await db.ModelTurns.Where(t => t.ExecutionId == id).SumAsync(t => t.EstimatedCostUsd ?? t.ReservedUsd, ct) > execution.MaxCostUsd)
                 throw new ApiException(409, "budget_exceeded", "Model budget exceeded.");
@@ -76,7 +76,7 @@ public sealed class ExecutionResultAccess(AppDbContext db, LeaseAccess leases, T
     // The answer is the content of the closing "finish" action; an analysis without one has produced nothing to show.
     private async Task<bool> HasAnswerAsync(Guid id, CancellationToken ct)
     {
-        var last = await db.ModelTurns.AsNoTracking().Where(t => t.ExecutionId == id && t.State == "completed")
+        var last = await db.ModelTurns.AsNoTracking().Where(t => t.ExecutionId == id && t.State == ModelTurnState.Completed)
             .OrderByDescending(t => t.Attempt).ThenByDescending(t => t.Sequence).Select(t => t.Action).FirstOrDefaultAsync(ct);
         if (last is null) return false;
         try

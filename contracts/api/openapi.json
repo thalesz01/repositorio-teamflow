@@ -4911,7 +4911,7 @@
             "type": "string"
           },
           "role": {
-            "type": "string"
+            "$ref": "#/components/schemas/MemberRole"
           }
         }
       },
@@ -5272,7 +5272,7 @@
             "type": "string"
           },
           "role": {
-            "type": "string"
+            "$ref": "#/components/schemas/MemberRole"
           }
         }
       },
@@ -6467,8 +6467,7 @@
             "format": "uuid"
           },
           "kind": {
-            "type": "string",
-            "default": "change"
+            "$ref": "#/components/schemas/TaskKind"
           },
           "previousTaskId": {
             "type": [
@@ -6559,9 +6558,13 @@
             ]
           },
           "kind": {
-            "type": [
-              "null",
-              "string"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskKind"
+              }
             ]
           },
           "previousTaskId": {
@@ -6662,6 +6665,19 @@
             "format": "uuid"
           }
         }
+      },
+      "MemberRole": {
+        "enum": [
+          "member",
+          "owner"
+        ]
+      },
+      "TaskKind": {
+        "enum": [
+          "change",
+          "analysis"
+        ],
+        "default": "change"
       }
     }
   },

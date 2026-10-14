@@ -44,7 +44,7 @@ public static class LocalRunnerProvisioning
         var repository = await db.GitConnections.AsNoTracking().SingleOrDefaultAsync(r => r.OrganizationId == organizationId
             && r.ProjectId == projectId && r.Provider == "local" && r.RevokedAt == null && !r.ForTasks, ct);
         if (repository is not null) services.GetRequiredService<LocalRepository>().AuthorizedPath(organizationId, projectId, repository.LocalPath);
-        var issued = RunnerEndpoints.Issue(organizationId, projectId, new RunnerInput(), services.GetRequiredService<TimeProvider>());
+        var issued = RunnerService.Issue(organizationId, projectId, new RunnerInput(), services.GetRequiredService<TimeProvider>());
         db.RunnerCredentials.Add(issued.Entity);
         await db.SaveChangesAsync(ct);
         return issued.Response;

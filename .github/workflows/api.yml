@@ -64,12 +64,13 @@ jobs:
       - run: dotnet restore . --locked-mode
       - run: dotnet restore ../../tests/TeamFlow.Api.Tests --locked-mode
       - run: dotnet build . --no-restore
-      # Os três testes excluídos dependem de um codex.exe nativo (Windows, ADR 0005) e rodam
-      # somente na máquina do piloto: ver "CI" em docs/development.md.
+      # Os seis testes excluídos dependem de um executável .exe nativo (Windows, ADR 0005): a API só aceita
+      # CLI com essa extensão e o fixture dos testes é CodexCliFixture.exe. Rodam somente na máquina do piloto:
+      # ver "CI" em docs/development.md.
       - name: Test
         run: >-
           dotnet test ../../tests/TeamFlow.Api.Tests --no-restore
-          --filter "FullyQualifiedName!~NativeCliReceivesStdinHasBoundedLifecycleAndDoesNotInventBillingAsync&FullyQualifiedName!~LocalConfigurationChecksProjectAuthorityAndPinsCommittedBaseAsync&FullyQualifiedName!~ConfirmedCliAnswerCanReplayAndRecoverWithUnknownBillingAsync"
+          --filter "FullyQualifiedName!~NativeCliReceivesStdinHasBoundedLifecycleAndDoesNotInventBillingAsync&FullyQualifiedName!~LocalConfigurationChecksProjectAuthorityAndPinsCommittedBaseAsync&FullyQualifiedName!~ConfirmedCliAnswerCanReplayAndRecoverWithUnknownBillingAsync&FullyQualifiedName!~SelectionIsValidatedScopedAndPreservedInExecutionAsync&FullyQualifiedName!~TaskCanBeSavedBeforeItsAiIsReadyAndOnlyRunningNeedsTheCliAsync&FullyQualifiedName!~ClaudeUsesStdinNoToolsAndDoesNotExposeServerSecretsAsync"
       - run: dotnet format . --no-restore --verify-no-changes
       - run: dotnet format ../../tests/TeamFlow.Api.Tests --no-restore --verify-no-changes
       - run: dotnet tool run dotnet-ef migrations has-pending-model-changes --no-build --project .

@@ -21,7 +21,7 @@ public sealed class TaskAccess(AppDbContext db, ProjectAccess projects)
                 .SetProperty(t => t.Version, Guid.NewGuid()), ct);
     /// <summary>An analysis has no review or merge: its answer is the result, so a successful execution closes the task.</summary>
     public Task<int> ApplyAnalysisAnsweredAsync(Guid organizationId, Guid projectId, Guid taskId, CancellationToken ct) =>
-        db.WorkItems.Where(t => t.Id == taskId && t.OrganizationId == organizationId && t.ProjectId == projectId && t.Stage == TaskStage.Execution && t.Kind == "analysis")
+        db.WorkItems.Where(t => t.Id == taskId && t.OrganizationId == organizationId && t.ProjectId == projectId && t.Stage == TaskStage.Execution && t.Kind == TaskKind.Analysis)
             .ExecuteUpdateAsync(set => set.SetProperty(t => t.Stage, TaskStage.Done).SetProperty(t => t.Version, Guid.NewGuid()), ct);
 
     public Task<int> ApplyPrPublishedAsync(Guid organizationId, Guid projectId, Guid taskId, CancellationToken ct) =>

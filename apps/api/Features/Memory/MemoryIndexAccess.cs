@@ -111,6 +111,15 @@ public sealed class MemoryIndexAccess(AppDbContext db, MemoryAccess memory, Proj
         return chunks.ToArray();
     }
     private static string Hash(string content) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
+    public async Task<PageResult<IndexDto>> ListAsync(Guid organizationId, Guid projectId, Guid itemId, int? page, int? pageSize, ClaimsPrincipal user, CancellationToken ct)
+    {
+        await memory.RequireAsync(organizationId, projectId, itemId, user, ct);
+        var (number, size) = Pagination.Validate(page, pageSize);
+        var query = db.MemoryIndexes.AsNoTracking().Where(i => i.ItemId == itemId && i.OrganizationId == organizationId && i.ProjectId == projectId);
+        var entries = await query.OrderByDescending(i => i.CreatedAt).ThenBy(i => i.Id).Skip((number - 1) * size).Take(size).ToListAsync(ct);
+        return new PageResult<IndexDto>(entries.Select(ToDto).ToList(), number, size, await query.CountAsync(ct));
+    }
+
     public static IndexDto ToDto(MemoryIndex i) => new(i.Id, i.ItemId, i.SourceVersion, i.Model, i.Dimensions, i.Chunker, i.State,
         i.FailureCode, i.CreatedAt, i.CompletedAt, i.MaxCostUsd, i.ReservedUsd, i.EstimatedCostUsd, i.InputTokens);
 }

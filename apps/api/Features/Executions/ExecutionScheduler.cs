@@ -103,7 +103,7 @@ public sealed class ExecutionScheduler(AppDbContext db, TaskAccess tasks, TimePr
             RequestedBy = AuthEndpoints.UserId(user),
             IdempotencyKey = key,
             RequestHash = hash,
-            TaskSnapshot = JsonSerializer.Serialize(TaskEndpoints.ToDto(task), SnapshotOptions),
+            TaskSnapshot = JsonSerializer.Serialize(TaskDto.From(task), SnapshotOptions),
             CreatedAt = createdAt,
             MaxDurationSeconds = request.MaxDurationSeconds,
             MaxAttempts = request.MaxAttempts,
@@ -218,6 +218,16 @@ public sealed class ExecutionScheduler(AppDbContext db, TaskAccess tasks, TimePr
             && e.WorkerId == workerId && e.LeaseToken == token && e.LeaseExpiresAt > now && e.DeadlineAt > now && !e.CancellationRequested)
             .ExecuteUpdateAsync(set => set.SetProperty(e => e.LeaseExpiresAt, e => e.DeadlineAt < desired ? e.DeadlineAt : desired), ct);
         return updated == 1;
+    }
+
+    public async Task<PageResult<ExecutionDto>> ListAsync(Guid organizationId, Guid projectId, Guid taskId, int? page, int? pageSize, ClaimsPrincipal user, CancellationToken ct)
+    {
+        await tasks.RequireAsync(organizationId, projectId, taskId, user, ct);
+        var (number, size) = Pagination.Validate(page, pageSize);
+        var query = db.Executions.AsNoTracking().Where(e => e.OrganizationId == organizationId && e.ProjectId == projectId && e.TaskId == taskId)
+            .OrderByDescending(e => e.CreatedAt).ThenBy(e => e.Id);
+        var executions = await query.Skip((number - 1) * size).Take(size).ToListAsync(ct);
+        return new PageResult<ExecutionDto>(executions.Select(ToDto).ToList(), number, size, await query.CountAsync(ct));
     }
 
     public async Task<ExecutionDto> CancelAsync(Guid organizationId, Guid projectId, Guid taskId, Guid executionId, ClaimsPrincipal user, CancellationToken ct)

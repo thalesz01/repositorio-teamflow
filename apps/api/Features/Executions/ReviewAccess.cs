@@ -130,26 +130,3 @@ public sealed class ReviewAccess(AppDbContext db, TaskAccess tasks, RepositoryAc
         execution.ReviewCiPassed, execution.ReviewApprovedBy, execution.ConfirmedMergeCommit,
         execution.ReviewState == "awaiting_merge" && configuration.GetValue<bool>("Local:EnableMerge"));
 }
-
-public static class ReviewEndpoints
-{
-    public static void MapReviews(this IEndpointRouteBuilder routes)
-    {
-        var group = routes.MapGroup("/api/v1/organizations/{organizationId:guid}/projects/{projectId:guid}/tasks/{taskId:guid}/executions/{executionId:guid}")
-            .RequireAuthorization().WithTags("Reviews");
-        group.MapGet("/review", async (Guid organizationId, Guid projectId, Guid taskId, Guid executionId, ClaimsPrincipal user,
-            ReviewAccess reviews, CancellationToken ct) => await reviews.ReadAsync(organizationId, projectId, taskId, executionId, user, ct));
-        foreach (var command in new[] { "approve", "refresh", "merge", "complete" })
-        {
-            var approve = command == "approve";
-            group.MapPost("/review/" + command, async (Guid organizationId, Guid projectId, Guid taskId, Guid executionId,
-                ClaimsPrincipal user, ReviewAccess reviews, CancellationToken ct) =>
-            {
-                await reviews.ReadAsync(organizationId, projectId, taskId, executionId, user, ct);
-                if (command == "merge") return await reviews.MergeAsync(executionId, AuthEndpoints.UserId(user), ct);
-                if (command == "complete") return await reviews.CompleteAsync(executionId, AuthEndpoints.UserId(user), ct);
-                return await reviews.ReconcileAsync(executionId, approve ? AuthEndpoints.UserId(user) : null, ct);
-            });
-        }
-    }
-}

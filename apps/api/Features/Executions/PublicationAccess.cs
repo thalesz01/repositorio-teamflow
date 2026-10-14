@@ -68,7 +68,7 @@ public sealed class PublicationAccess(AppDbContext db, TaskAccess tasks, Reposit
                 throw new ApiException(409, "validation_required", "Verified write and later successful tests are required.");
             var receipts = await db.ModelTurns.AsNoTracking().Where(t => t.ExecutionId == id && t.OrganizationId == execution.OrganizationId
                 && t.ProjectId == execution.ProjectId).OrderByDescending(t => t.Attempt).Take(200).ToListAsync(timeout.Token);
-            if (receipts.Any(t => t.State != "completed" || (t.BillingMode == "api" && t.EstimatedCostUsd == null)))
+            if (receipts.Any(t => t.IsUnresolved))
                 throw new ApiException(409, "model_outcome_uncertain", "Uncertain model operations prevent publication.");
             var files = execution.TransferSnapshot is null ? new List<PublicationFile>()
                 : (JsonSerializer.Deserialize<PortableTransfer>(execution.TransferSnapshot, JsonOptions)?.Writes ?? [])
@@ -148,23 +148,5 @@ public sealed class PublicationAccess(AppDbContext db, TaskAccess tasks, Reposit
             receipt = new(number, url, source.BaseCommit, head, source.Branch);
         }
         return new(execution.PublicationState ?? "not_requested", execution.PublicationAttempts, execution.PublicationFailureCode, receipt);
-    }
-}
-
-public static class PublicationEndpoints
-{
-    public static void MapPublication(this IEndpointRouteBuilder routes)
-    {
-        var group = routes.MapGroup("/api/v1/organizations/{organizationId:guid}/projects/{projectId:guid}/tasks/{taskId:guid}/executions/{executionId:guid}")
-            .WithTags("Executions").RequireAuthorization();
-        group.MapGet("/publication", async (Guid organizationId, Guid projectId, Guid taskId, Guid executionId,
-            ClaimsPrincipal user, PublicationAccess publication, CancellationToken ct) =>
-            await publication.ReadAsync(organizationId, projectId, taskId, executionId, user, ct)).Produces<PublicationStatus>();
-        group.MapPost("/publication", async (Guid organizationId, Guid projectId, Guid taskId, Guid executionId,
-            ClaimsPrincipal user, PublicationAccess publication, CancellationToken ct) =>
-        {
-            await publication.ReadAsync(organizationId, projectId, taskId, executionId, user, ct);
-            return await publication.PublishAsync(executionId, ct);
-        }).Produces<PublicationStatus>();
     }
 }

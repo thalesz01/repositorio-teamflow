@@ -41,7 +41,7 @@ Referência: commit/PR quando houver, ou entrega local sem commit
 | Memória | T21–T24 | Conhecimento com fontes, recuperação e portabilidade |
 | Piloto | T25 | Fluxo completo validado com limites explícitos |
 
-Próximo passo: nenhum item obrigatório pendente. T01–T61 estão concluídas. Esta ordem não autoriza trabalho paralelo automaticamente.
+Próximo passo: nenhum item obrigatório pendente. T01–T65 estão concluídas. Esta ordem não autoriza trabalho paralelo automaticamente.
 
 ## Tarefas
 
@@ -783,3 +783,38 @@ Por decisão explícita do responsável, a T25 passa a exigir smoke de Codex CLI
 - Conclusão 2026-10-14: Codex passa a rodar com `--json` e o consumo é lido de `turn.completed`; Claude lê `usage` do envelope; `CliUsage`, `TextModelResult.CachedInputTokens`, `ModelTurn.CachedInputTokens` (migração `ModelTurnCachedTokens`), `ExecutionProgress.cachedInputTokens` e linha "Tokens" no painel de progresso; `PromptContext` monta a visão do contexto enviada ao modelo (teste enxuto, leitura repetida, JSON sem escapes, omissão do conteúdo mais antigo entre 40 000 e 20 000 bytes) e `ModelTurnAccess` a usa; fixture dos CLIs emite uso.
 - Validação: `dotnet test` API 97/97 (novos: `PromptContextTests` — teste, leitura repetida, omissão, estabilidade do prefixo, texto legível, execução sintética 24% menor, soma de uso; asserções de tokens em `AgentSelectionTests` e `LocalIntegrationTests`); `dotnet format`, `has-pending-model-changes`, `tsc`, `eslint`; Playwright 13/13 (asserções de tokens em `kanban` e `execution-report`).
 - Limitações: nenhum agente completo foi executado com modelo real; as medições de custo fixo vêm de duas chamadas reais curtas ao Codex e uma ao Claude. A economia real depende do tamanho dos arquivos e do número de passos. Custo em dinheiro continua desconhecido para os CLIs. Não reduz o número de passos nem impõe orçamento por execução (itens 4 e 5 do plano).
+
+### [x] T62 — Endpoints enxutos: Tasks como feature de referência
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-14
+- Escopo: tirar regra de negócio dos endpoints, começando por `Features/Tasks`, que passa a ser o modelo para as demais features (AGENTS.md §6). Refactor sem mudança de comportamento nem de contrato HTTP.
+- Conclusão 2026-10-14: `TaskContracts.cs` guarda os DTOs e `TaskDto.From`; `TaskService` concentra listar, criar, editar e transicionar (a criação foi dividida em kind, estágio inicial, pasta e sequência, na mesma ordem de validação); `TaskEndpoints` só faz rota, binding e resposta, com handlers nomeados; `ExecutionScheduler` usa `TaskDto.From` em vez de chamar a classe de endpoints.
+- Validação: `dotnet build --no-restore` → sem avisos; `dotnet format TeamFlow.Api.csproj --verify-no-changes --no-restore` → sem diferenças; `dotnet test` API → 97/97. Na primeira execução do baseline filtrado `AgentSelectionTests.TaskCanBeSavedBeforeItsAiIsReadyAndOnlyRunningNeedsTheCliAsync` falhou uma vez, antes de qualquer alteração, e passou na repetição; causa não investigada. OpenAPI exportado da `develop` e desta branch (API em Development, porta 5098, banco inexistente, content root isolado) → JSON equivalente; o `GET` de tarefa precisou de `.Produces<TaskDto>()` para manter o schema.
+- Limitações: `Projects`, `Organizations`, `Memory`, `Runners`, `Integrations` e `Executions` ainda têm lógica nos endpoints ou em classes grandes e seguem o mesmo padrão em tarefas futuras. Sem testes unitários novos: a cobertura vem dos testes HTTP existentes.
+### [x] T63 — Padrão de endpoints enxutos nas demais features
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-14
+- Escopo: replicar nas features da API o padrão de endpoints enxutos (AGENTS.md §6), sem mudar comportamento nem contrato HTTP. Parte do mesmo objetivo de T62; branch própria a partir da `develop`.
+- Conclusão 2026-10-14: `OrganizationService`, `ProjectService`, `WorkspaceService`, `RunnerService` (credenciais e protocolo claim/heartbeat), `RepositoryService` e `ProfileService` concentram as regras que estavam nos endpoints; DTOs de Organizations, Projects e Workspace foram para `<Feature>Contracts.cs`; `ProfileDto.From` e `GitDto.From` substituem os `ToDto` dos endpoints (teste `ApiClient` atualizado); as consultas soltas de `Memory` (listar itens, listar índices, ler versão) foram para `MemoryAccess` e `MemoryIndexAccess` e a listagem de execuções para `ExecutionScheduler`; `ProgressEndpoints`, `PublicationEndpoints` e `ReviewEndpoints` saíram dos arquivos de serviço para arquivos próprios e as rotas de revisão deixaram o `foreach` e ficaram explícitas. `Auth` já estava enxuto e não mudou.
+- Validação: `dotnet build --no-restore` → sem avisos; `dotnet format` da API e do projeto de testes `--verify-no-changes` → sem diferenças; `dotnet test` API → 97/97 após cada grupo; OpenAPI exportado da `develop` e desta branch (API em Development, porta 5098, banco inexistente, content root isolado) → JSON equivalente, só a ordem das chaves muda. A comparação achou um schema de resposta perdido em `GET /projects/{projectId}` (handler passou a retornar `IResult`), corrigido com `.Produces<ProjectDto>()`.
+- Limitações: sem testes unitários novos; a cobertura vem dos testes HTTP existentes. `contracts/api/openapi.json` e o cliente do `apps/web` não foram regenerados, pois o contrato não mudou. `ModelTurnAccess`, `PublicationAccess` e `ReviewAccess` continuam grandes e mudam em tarefa própria. Esta branch parte da `develop` sem T62; ao integrar as duas, o `TASKS.md` e o `Program.cs` podem pedir resolução manual simples.
+
+### [x] T64 — Estados e papéis tipados com enums
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-14
+- Escopo: trocar strings soltas por enums onde o conjunto de valores é fechado e interno ao produto, sem migração de dados e mantendo o texto gravado e o JSON.
+- Conclusão 2026-10-14: `TaskKind` (`WorkItem.Kind`, `TaskDto`, `TaskInput`), `ModelTurnState` e `BillingMode` (`ModelTurn`) e `MemberRole` (`Membership`, `OrganizationDto`, `MemberDto`). `LowercaseEnumConverter<T>` grava o nome com a primeira letra minúscula (`completed`, `cli`, `owner`), que é o texto que as colunas já tinham, então `has-pending-model-changes` não acusa nada e nenhuma migração foi criada. O JSON segue o conversor global camelCase. `OrganizationAccess` passou a projetar `MemberRole?`: com enum, `SingleOrDefault` devolveria `Member` para quem não pertence à organização. `contracts/api/openapi.json` e `apps/web/api/schema.d.ts` regenerados (diff só de `kind` e `role`).
+- Validação: `dotnet build --no-restore` → sem avisos; `dotnet format` da API e dos testes `--verify-no-changes` → sem diferenças; `dotnet ef migrations has-pending-model-changes` → sem mudanças; `dotnet test` API → 107/107 (novos: `StoredEnumTests`, 10 casos — texto gravado de cada valor e leitura de linha escrita como texto); `npm run typecheck` e `npm run lint` em `apps/web` → sem erros.
+- Limitações: ficaram como string de propósito `AgentProfile.Provider`, `GitConnection.Provider` e `ModelAction.Tool` (fronteira com CLIs e modelo, validada na entrada) e os estados com sublinhado (`MemoryIndex.State`, `DemandAnalysis.State`, `Execution.PublicationState`, `Execution.ReviewState`, `needs_information`, `awaiting_merge`), que pedem decisão sobre o nome no fio. Um `kind` desconhecido na criação de tarefa agora recebe o 400 genérico do binder em vez de `invalid_kind`. No tipo TypeScript gerado, `TaskDto.kind` ficou opcional (o gerador não trata mais o default como obrigatório); a API sempre envia o campo. Playwright não foi executado e `npm run build` foi evitado para não tocar o `.next` do preview. Branch empilhada sobre T62 e T63 (nenhuma estava integrada); abrir os PRs nessa ordem.
+
+### [x] T65 — Dividir o turno de modelo em fases
+
+- Status: Concluída
+- Responsável: Claude; início 2026-10-14
+- Escopo: reduzir `ModelTurnAccess.GenerateAsync` (cerca de 130 linhas misturando idempotência, orçamento, prompt, chamada ao modelo e compensação) sem mudar comportamento, ordem dos erros nem contrato.
+- Conclusão 2026-10-14: `GenerateAsync` virou orquestração de três fases com a mesma ordem de verificações e transações curtas: `ReserveAsync` (replay de resposta conhecida ou limites e reserva persistida), `CallModelAsync` (chamada fora de transação) e `CompleteAsync` (revalida lease, perfil e checkpoint antes de gravar), mais `MarkUncertainAsync` para a compensação. As regras puras de política e de ação do modelo foram para `ModelActionRules`. O predicado "consumo desconhecido bloqueia" (7 cópias em 6 arquivos) virou `ModelTurn.Unresolved` (consulta EF) e `ModelTurn.IsUnresolved` (memória); o gasto acumulado virou `SpentAsync` e `RequireWithinBudgetAsync`.
+- Validação: `dotnet build --no-restore` → sem avisos; `dotnet format` da API e dos testes `--verify-no-changes` → sem diferenças; `dotnet test` API → 138/138 (novos: `ModelActionRulesTests`, 31 casos). Equivalência das regras extraídas verificada com teste diferencial temporário, não versionado: a condição original copiada literalmente contra `ModelActionRules` em 39 424 combinações de ação e 12 167 de política, sem divergência. O fluxo de reserva, replay, orçamento e incerteza segue coberto por `AgentRuntimeTests`.
+- Limitações: `ReserveAsync` e `CompleteAsync` continuam sem teste unitário próprio, pois dependem do banco; a cobertura vem dos testes HTTP. `PublicationAccess` e `ReviewAccess` seguem grandes. Branch empilhada sobre T62, T63 e T64, ainda não integradas.
