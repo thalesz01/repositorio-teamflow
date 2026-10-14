@@ -20,6 +20,8 @@ Production recusa inicialização até implementar sandbox VM/microVM e proteç�
 
 ## Início rápido local
 
+Passo a passo completo para uma máquina nova (pré-requisitos, `.env`, configuração, runner e primeira tarefa): [docs/getting-started.md](docs/getting-started.md).
+
 Com `.env` criado, Docker, Git e Codex instalados: `./scripts/Start-TeamFlow.ps1` inicia banco, API, web e os runners; o quadro mostra "Primeiros passos" até Codex e runner estarem prontos; o fluxo tem quatro etapas — criar (com a pasta do código), executar, corrigir (comentando linhas do diff) e concluir (ADR 0010) (ver [docs/local-development.md](docs/local-development.md)). O merge pode ser feito no app quando o operador liga `Local:EnableMerge` (ADR 0009).
 
 ## Modo local aceito em 2026-10-12
