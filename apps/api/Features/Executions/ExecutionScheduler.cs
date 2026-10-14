@@ -103,7 +103,7 @@ public sealed class ExecutionScheduler(AppDbContext db, TaskAccess tasks, TimePr
             RequestedBy = AuthEndpoints.UserId(user),
             IdempotencyKey = key,
             RequestHash = hash,
-            TaskSnapshot = JsonSerializer.Serialize(TaskEndpoints.ToDto(task), SnapshotOptions),
+            TaskSnapshot = JsonSerializer.Serialize(TaskDto.From(task), SnapshotOptions),
             CreatedAt = createdAt,
             MaxDurationSeconds = request.MaxDurationSeconds,
             MaxAttempts = request.MaxAttempts,
