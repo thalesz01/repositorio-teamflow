@@ -33,7 +33,7 @@ public sealed class ExecutionTransfer(AppDbContext db)
             throw new ApiException(409, "transfer_evidence_missing", "Parent portable evidence is incomplete.");
         var receipts = await db.ModelTurns.AsNoTracking().Where(t => t.ExecutionId == parent.Id && t.OrganizationId == parent.OrganizationId
             && t.ProjectId == parent.ProjectId).OrderByDescending(t => t.Attempt).Take(200).ToListAsync(ct);
-        if (receipts.Any(t => t.State != ModelTurnState.Completed || (t.BillingMode == BillingMode.Api && t.EstimatedCostUsd == null)))
+        if (receipts.Any(t => t.IsUnresolved))
             throw new ApiException(409, "model_outcome_uncertain", "Uncertain parent operations cannot be transferred.");
         var writes = parent.TransferSnapshot is null ? new List<RecoveryWrite>()
             : (JsonSerializer.Deserialize<PortableTransfer>(parent.TransferSnapshot, JsonOptions)?.Writes ?? []).ToList();

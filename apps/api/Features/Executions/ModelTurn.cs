@@ -1,3 +1,5 @@
+using System.Linq.Expressions;
+
 namespace TeamFlow.Api.Features.Executions;
 
 // A turn stays pending while the provider runs; an interrupted one becomes uncertain and is never retried automatically.
@@ -26,6 +28,13 @@ public sealed class ModelTurn
     public string? Action { get; set; }
     public string? FailureCode { get; set; }
     public string? FailureType { get; set; }
+
+    // A turn whose outcome or cost is unknown (pending, interrupted, or metered without a reported cost) blocks further
+    // model calls and result validation: it is never retried automatically and never counted as zero.
+    public static readonly Expression<Func<ModelTurn, bool>> Unresolved = t =>
+        t.State != ModelTurnState.Completed || (t.BillingMode == BillingMode.Api && t.EstimatedCostUsd == null);
+    private static readonly Func<ModelTurn, bool> UnresolvedCheck = Unresolved.Compile();
+    public bool IsUnresolved => UnresolvedCheck(this);
 }
 
 public sealed record AgentToolPolicy(string[] Readable, string[] Editable,

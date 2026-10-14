@@ -17,7 +17,7 @@ public sealed class RecoveryAccess(AppDbContext db, LeaseAccess leases, Checkpoi
     public async Task<RecoveryReply> ReadAsync(Guid id, Guid token, ClaimsPrincipal user, CancellationToken ct)
     {
         var execution = await leases.RequireAsync(id, token, user, ct);
-        if (await db.ModelTurns.AnyAsync(t => t.ExecutionId == id && (t.State != ModelTurnState.Completed || (t.BillingMode == BillingMode.Api && t.EstimatedCostUsd == null)), ct))
+        if (await db.ModelTurns.Where(t => t.ExecutionId == id).AnyAsync(ModelTurn.Unresolved, ct))
             throw new ApiException(409, "model_outcome_uncertain", "An unknown model outcome prevents automatic recovery.");
         var checkpoint = await checkpoints.ReadAsync(id, token, user, ct);
         if (checkpoint is null) return new(null, []);
