@@ -361,7 +361,7 @@ public sealed class ReviewTests(DatabaseFixture fixture) : IClassFixture<Databas
                 ProjectId = project.Id,
                 Attempt = 1,
                 Sequence = 0,
-                State = "completed",
+                State = ModelTurnState.Completed,
                 EstimatedCostUsd = 0.01m,
                 Action = JsonSerializer.Serialize(new ModelAction("write", "answer.txt", "42", original), ApiClient.JsonOptions)
             });

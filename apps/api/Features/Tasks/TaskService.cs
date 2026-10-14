@@ -84,12 +84,10 @@ public sealed class TaskService(AppDbContext db, ProjectAccess projects, Organiz
 
     private static void ApplyKind(WorkItem task, TaskInput input)
     {
-        if (input.Kind is not (null or "change" or "analysis"))
-            throw new ApiException(400, "invalid_kind", "A task is either a change or an analysis.");
-        if (input.Kind != "analysis") return;
+        if (input.Kind != TaskKind.Analysis) return;
         if (string.IsNullOrWhiteSpace(input.FolderPath))
             throw new ApiException(400, "folder_required", "An analysis needs the folder to read.");
-        task.Kind = "analysis";
+        task.Kind = TaskKind.Analysis;
     }
 
     private static void ApplyInitialStage(WorkItem task, TaskStage? requested)
@@ -119,7 +117,7 @@ public sealed class TaskService(AppDbContext db, ProjectAccess projects, Organiz
     {
         var previous = await db.WorkItems.AsNoTracking().SingleOrDefaultAsync(t => t.Id == previousId && t.OrganizationId == task.OrganizationId && t.ProjectId == task.ProjectId, ct)
             ?? throw new ApiException(404, "task_not_found", "The previous step was not found.");
-        if (task.Kind != "change" || previous.Kind != "change" || task.RepositoryConnectionId is null || previous.RepositoryConnectionId != task.RepositoryConnectionId)
+        if (task.Kind != TaskKind.Change || previous.Kind != TaskKind.Change || task.RepositoryConnectionId is null || previous.RepositoryConnectionId != task.RepositoryConnectionId)
             throw new ApiException(400, "invalid_sequence", "A sequence links change tasks that use the same folder and branch.");
         if (previous.Stage is TaskStage.Failed or TaskStage.Cancelled or TaskStage.Blocked)
             throw new ApiException(409, "invalid_sequence", "The previous step failed or was cancelled; continue from another task.");

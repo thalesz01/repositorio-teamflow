@@ -57,17 +57,17 @@ public sealed class FourStepFlowTests(DatabaseFixture fixture) : IClassFixture<D
             await LocalIntegrationTests.GitAsync(repository, ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "--allow-empty", "-m", "One"]);
             configuration["Local:BrowseRoots:0"] = root; configuration["Local:AllowRepositorySelection"] = "true";
             var tasks = ApiClient.TasksPath(project) + "/";
-            TaskInput Draft(string? kind, string? folder) => new("What is the discount rule?", "Where is the rule for discounts on POST /orders?", ["The question is answered."], null, [],
+            TaskInput Draft(TaskKind? kind, string? folder) => new("What is the discount rule?", "Where is the rule for discounts on POST /orders?", ["The question is answered."], null, [],
                 FolderPath: folder, Stage: TaskStage.Ready, Kind: kind);
-            using var noFolder = await client.SendAsync(HttpMethod.Post, tasks, Draft("analysis", null));
+            using var noFolder = await client.SendAsync(HttpMethod.Post, tasks, Draft(TaskKind.Analysis, null));
             Assert.Equal(HttpStatusCode.BadRequest, noFolder.StatusCode);
-            using var unknown = await client.SendAsync(HttpMethod.Post, tasks, Draft("migration", repository));
+            using var unknown = await client.SendAsync(HttpMethod.Post, tasks, new { title = "Rename", description = "Rename it", acceptanceCriteria = new[] { "Done" }, dependencyIds = Array.Empty<Guid>(), folderPath = repository, kind = "migration" });
             Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
-            using var created = await client.SendAsync(HttpMethod.Post, tasks, Draft("analysis", repository));
+            using var created = await client.SendAsync(HttpMethod.Post, tasks, Draft(TaskKind.Analysis, repository));
             var analysis = await created.ReadAsync<TaskDto>();
-            Assert.Equal("analysis", analysis.Kind); Assert.Equal(TaskStage.Ready, analysis.Stage); Assert.Equal(repository, analysis.FolderPath);
+            Assert.Equal(TaskKind.Analysis, analysis.Kind); Assert.Equal(TaskStage.Ready, analysis.Stage); Assert.Equal(repository, analysis.FolderPath);
             using var ordinary = await client.SendAsync(HttpMethod.Post, tasks, Draft(null, repository));
-            Assert.Equal("change", (await ordinary.ReadAsync<TaskDto>()).Kind);
+            Assert.Equal(TaskKind.Change, (await ordinary.ReadAsync<TaskDto>()).Kind);
         }
         finally
         {

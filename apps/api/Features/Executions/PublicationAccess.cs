@@ -68,7 +68,7 @@ public sealed class PublicationAccess(AppDbContext db, TaskAccess tasks, Reposit
                 throw new ApiException(409, "validation_required", "Verified write and later successful tests are required.");
             var receipts = await db.ModelTurns.AsNoTracking().Where(t => t.ExecutionId == id && t.OrganizationId == execution.OrganizationId
                 && t.ProjectId == execution.ProjectId).OrderByDescending(t => t.Attempt).Take(200).ToListAsync(timeout.Token);
-            if (receipts.Any(t => t.State != "completed" || (t.BillingMode == "api" && t.EstimatedCostUsd == null)))
+            if (receipts.Any(t => t.State != ModelTurnState.Completed || (t.BillingMode == BillingMode.Api && t.EstimatedCostUsd == null)))
                 throw new ApiException(409, "model_outcome_uncertain", "Uncertain model operations prevent publication.");
             var files = execution.TransferSnapshot is null ? new List<PublicationFile>()
                 : (JsonSerializer.Deserialize<PortableTransfer>(execution.TransferSnapshot, JsonOptions)?.Writes ?? [])

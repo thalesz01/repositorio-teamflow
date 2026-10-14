@@ -95,13 +95,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         model.Entity<ModelTurn>().Property(t => t.ReservedUsd).HasPrecision(18, 8);
         model.Entity<ModelTurn>().Property(t => t.EstimatedCostUsd).HasPrecision(20, 12);
         model.Entity<ModelTurn>().Property(t => t.RequestHash).HasMaxLength(64);
-        model.Entity<ModelTurn>().Property(t => t.BillingMode).HasMaxLength(8).HasDefaultValue("api");
+        model.Entity<ModelTurn>().Property(t => t.BillingMode).HasConversion<LowercaseEnumConverter<BillingMode>>().HasMaxLength(8).HasDefaultValue(BillingMode.Api);
         model.Entity<AgentProfile>().Property(p => p.ReasoningEffort).HasMaxLength(16);
         model.Entity<WorkItem>().HasOne<AgentProfile>().WithMany().HasForeignKey(t => new { t.AgentProfileId, t.OrganizationId, t.ProjectId }).HasPrincipalKey(p => new { p.Id, p.OrganizationId, p.ProjectId }).OnDelete(DeleteBehavior.Restrict);
         model.Entity<AgentProfile>().Property(p => p.Provider).HasMaxLength(16).HasDefaultValue("codex");
         model.Entity<GitConnection>().Property(g => g.Provider).HasMaxLength(16).HasDefaultValue("local");
         model.Entity<GitConnection>().Property(g => g.LocalPath).HasMaxLength(1024);
-        model.Entity<ModelTurn>().Property(t => t.State).HasMaxLength(16);
+        model.Entity<ModelTurn>().Property(t => t.State).HasConversion<LowercaseEnumConverter<ModelTurnState>>().HasMaxLength(16);
         model.Entity<ModelTurn>().Property(t => t.FailureCode).HasMaxLength(64);
         model.Entity<ModelTurn>().Property(t => t.FailureType).HasMaxLength(128);
         model.Entity<ModelTurn>().Property(t => t.Action).HasColumnType("jsonb");
@@ -132,7 +132,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         model.Entity<GitConnection>().HasIndex(g => new { g.OrganizationId, g.ProjectId, g.LocalPath, g.BaseBranch }).IsUnique().HasFilter("\"RevokedAt\" IS NULL AND \"ForTasks\"");
         model.Entity<WorkItem>().HasOne<GitConnection>().WithMany().HasForeignKey(t => new { t.RepositoryConnectionId, t.OrganizationId, t.ProjectId })
             .HasPrincipalKey(g => new { g.Id, g.OrganizationId, g.ProjectId }).OnDelete(DeleteBehavior.Restrict);
-        model.Entity<WorkItem>().Property(t => t.Kind).HasMaxLength(16).HasDefaultValue("change");
+        model.Entity<WorkItem>().Property(t => t.Kind).HasConversion<LowercaseEnumConverter<TaskKind>>().HasMaxLength(16).HasDefaultValue(TaskKind.Change);
         model.Entity<WorkItem>().HasOne<WorkItem>().WithMany().HasForeignKey(t => new { t.PreviousTaskId, t.OrganizationId, t.ProjectId })
             .HasPrincipalKey(t => new { t.Id, t.OrganizationId, t.ProjectId }).OnDelete(DeleteBehavior.Restrict);
         model.Entity<WorkItem>().HasIndex(t => t.PreviousTaskId).IsUnique().HasFilter("\"PreviousTaskId\" IS NOT NULL");
@@ -177,7 +177,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         model.Entity<WorkItem>().HasOne<AppUser>().WithMany().HasForeignKey(t => t.AssigneeId).OnDelete(DeleteBehavior.Restrict);
         model.Entity<Organization>().Property(o => o.Name).HasMaxLength(120);
         model.Entity<Membership>().HasKey(m => new { m.OrganizationId, m.UserId });
-        model.Entity<Membership>().Property(m => m.Role).HasMaxLength(16);
+        model.Entity<Membership>().Property(m => m.Role).HasConversion<LowercaseEnumConverter<MemberRole>>().HasMaxLength(16);
         model.Entity<Membership>().HasOne<Organization>().WithMany().HasForeignKey(m => m.OrganizationId).OnDelete(DeleteBehavior.Restrict);
         model.Entity<Membership>().HasOne<AppUser>().WithMany().HasForeignKey(m => m.UserId).OnDelete(DeleteBehavior.Restrict);
         model.Entity<Project>().Property(p => p.Name).HasMaxLength(120);

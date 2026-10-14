@@ -1,5 +1,7 @@
 namespace TeamFlow.Api.Features.Organizations;
 
+public enum MemberRole { Member, Owner }
+
 public sealed class Organization
 {
     public Guid Id { get; set; }
@@ -10,5 +12,5 @@ public sealed class Membership
 {
     public Guid OrganizationId { get; set; }
     public Guid UserId { get; set; }
-    public string Role { get; set; } = "member";
+    public MemberRole Role { get; set; } = MemberRole.Member;
 }

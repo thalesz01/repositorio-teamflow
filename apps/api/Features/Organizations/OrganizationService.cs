@@ -25,9 +25,9 @@ public sealed class OrganizationService(AppDbContext db, OrganizationAccess acce
     {
         var organization = new Organization { Id = Guid.NewGuid(), Name = Input.Required(request.Name, "name", 120) };
         db.Organizations.Add(organization);
-        db.Memberships.Add(new Membership { OrganizationId = organization.Id, UserId = AuthEndpoints.UserId(user), Role = "owner" });
+        db.Memberships.Add(new Membership { OrganizationId = organization.Id, UserId = AuthEndpoints.UserId(user), Role = MemberRole.Owner });
         await db.SaveChangesAsync(ct);
-        return new OrganizationDto(organization.Id, organization.Name, "owner");
+        return new OrganizationDto(organization.Id, organization.Name, MemberRole.Owner);
     }
 
     public async Task<PageResult<MemberDto>> ListMembersAsync(Guid organizationId, int? page, int? pageSize, ClaimsPrincipal user, CancellationToken ct)
@@ -51,7 +51,7 @@ public sealed class OrganizationService(AppDbContext db, OrganizationAccess acce
             throw new ApiException(409, "already_member", "User is already a member.");
         db.Memberships.Add(new Membership { OrganizationId = organizationId, UserId = account.Id });
         await db.SaveChangesAsync(ct);
-        return new MemberDto(account.Id, account.Email ?? "", "member");
+        return new MemberDto(account.Id, account.Email ?? "", MemberRole.Member);
     }
 
     public async Task RemoveMemberAsync(Guid organizationId, Guid userId, ClaimsPrincipal user, CancellationToken ct)
@@ -59,7 +59,7 @@ public sealed class OrganizationService(AppDbContext db, OrganizationAccess acce
         await access.RequireAsync(organizationId, user, ct, owner: true);
         var member = await db.Memberships.SingleOrDefaultAsync(m => m.OrganizationId == organizationId && m.UserId == userId, ct)
             ?? throw new ApiException(404, "member_not_found", "Member not found.");
-        if (member.Role == "owner")
+        if (member.Role == MemberRole.Owner)
             throw new ApiException(409, "owner_removal_forbidden", "The organization owner cannot be removed.");
         db.Memberships.Remove(member);
         await db.SaveChangesAsync(ct);

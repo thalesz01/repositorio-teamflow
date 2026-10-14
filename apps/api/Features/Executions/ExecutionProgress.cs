@@ -84,7 +84,7 @@ public sealed class ProgressAccess(AppDbContext db, TaskAccess tasks, TimeProvid
         if (eventId is not null && checkpoint is null) throw new ApiException(404, "report_not_found", "Report not found or expired.");
         var context = checkpoint is null ? null : JsonSerializer.Deserialize<CheckpointContext>(checkpoint.Context, JsonOptions);
         var failures = await db.ModelTurns.AsNoTracking().Where(t => t.ExecutionId == id
-            && t.OrganizationId == organizationId && t.ProjectId == projectId && t.State != "completed")
+            && t.OrganizationId == organizationId && t.ProjectId == projectId && t.State != ModelTurnState.Completed)
             .OrderByDescending(t => t.Attempt).ThenByDescending(t => t.Sequence)
             .Select(t => new { t.Attempt, t.Sequence, t.OperationId, t.State, t.FailureCode, t.FailureType }).Take(200).ToListAsync(ct);
         var failureCode = failures.FirstOrDefault()?.FailureCode ?? progress.Execution.FailureCode;

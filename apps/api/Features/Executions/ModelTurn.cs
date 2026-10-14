@@ -1,5 +1,11 @@
 namespace TeamFlow.Api.Features.Executions;
 
+// A turn stays pending while the provider runs; an interrupted one becomes uncertain and is never retried automatically.
+public enum ModelTurnState { Pending, Completed, Uncertain }
+
+// Api turns are billed per token and need a known cost; cli turns use the signed-in CLI and have no tariff.
+public enum BillingMode { Api, Cli }
+
 public sealed class ModelTurn
 {
     public Guid ExecutionId { get; set; }
@@ -9,8 +15,8 @@ public sealed class ModelTurn
     public int Attempt { get; set; }
     public int Sequence { get; set; }
     public string RequestHash { get; set; } = "";
-    public string State { get; set; } = "pending";
-    public string BillingMode { get; set; } = "api";
+    public ModelTurnState State { get; set; } = ModelTurnState.Pending;
+    public BillingMode BillingMode { get; set; } = BillingMode.Api;
     public decimal ReservedUsd { get; set; }
     public decimal? EstimatedCostUsd { get; set; }
     public int? InputTokens { get; set; }

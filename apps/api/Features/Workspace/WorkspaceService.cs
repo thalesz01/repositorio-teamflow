@@ -27,7 +27,7 @@ public sealed class WorkspaceService(AppDbContext db)
     {
         var owned = from member in db.Memberships.AsNoTracking()
                     join project in db.Projects.AsNoTracking() on member.OrganizationId equals project.OrganizationId
-                    where member.UserId == userId && member.Role == "owner"
+                    where member.UserId == userId && member.Role == MemberRole.Owner
                     select project;
         return await (from task in db.WorkItems.AsNoTracking()
                       join project in owned on new { task.OrganizationId, task.ProjectId } equals new { project.OrganizationId, ProjectId = project.Id }
@@ -42,7 +42,7 @@ public sealed class WorkspaceService(AppDbContext db)
         var organization = new Organization { Id = Guid.NewGuid(), Name = "Pessoal" };
         var project = new Project { Id = Guid.NewGuid(), OrganizationId = organization.Id, Name = "Tarefas" };
         db.Organizations.Add(organization);
-        db.Memberships.Add(new Membership { OrganizationId = organization.Id, UserId = userId, Role = "owner" });
+        db.Memberships.Add(new Membership { OrganizationId = organization.Id, UserId = userId, Role = MemberRole.Owner });
         db.Projects.Add(project);
         await db.SaveChangesAsync(ct);
         return new WorkspaceDto(organization.Id, project.Id);

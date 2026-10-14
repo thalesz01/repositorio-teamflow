@@ -12,10 +12,10 @@ public sealed class OrganizationAccess(AppDbContext db)
     {
         var userId = AuthEndpoints.UserId(user);
         var role = await db.Memberships.Where(m => m.OrganizationId == organizationId && m.UserId == userId)
-            .Select(m => m.Role).SingleOrDefaultAsync(cancellationToken);
+            .Select(m => (MemberRole?)m.Role).SingleOrDefaultAsync(cancellationToken);
         if (role is null)
             throw new ApiException(404, "organization_not_found", "Organization not found.");
-        if (owner && role != "owner")
+        if (owner && role != MemberRole.Owner)
             throw new ApiException(403, "owner_required", "Owner permission is required.");
     }
 

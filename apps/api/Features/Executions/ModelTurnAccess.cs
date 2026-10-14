@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TeamFlow.Api.Data;
 using TeamFlow.Api.Features.Integrations;
+using TeamFlow.Api.Features.Tasks;
 using TeamFlow.Api.Http;
 
 namespace TeamFlow.Api.Features.Executions;
@@ -27,7 +28,7 @@ public sealed class ModelTurnAccess(AppDbContext db, LeaseAccess leases, Profile
         try
         {
             using var task = JsonDocument.Parse(execution.TaskSnapshot);
-            return task.RootElement.TryGetProperty("kind", out var kind) && kind.GetString() == "analysis";
+            return task.RootElement.TryGetProperty("kind", out var kind) && Enum.TryParse<TaskKind>(kind.GetString(), ignoreCase: true, out var taskKind) && taskKind == TaskKind.Analysis;
         }
         catch (JsonException) { return false; }
     }
@@ -75,18 +76,18 @@ public sealed class ModelTurnAccess(AppDbContext db, LeaseAccess leases, Profile
             {
                 if (existing.RequestHash != hash || existing.Attempt != execution.Attempt || existing.Sequence != input.Sequence)
                     throw new ApiException(409, "model_operation_conflict", "Model operation was used with different context.");
-                if (existing.State != "completed" || (existing.BillingMode == "api" && existing.EstimatedCostUsd is null)) throw Uncertain();
+                if (existing.State != ModelTurnState.Completed || (existing.BillingMode == BillingMode.Api && existing.EstimatedCostUsd is null)) throw Uncertain();
                 if (await db.ModelTurns.Where(t => t.ExecutionId == id).SumAsync(t => t.EstimatedCostUsd ?? t.ReservedUsd, ct) > execution.MaxCostUsd)
                     throw new ApiException(409, "budget_exceeded", "Cumulative model budget exceeded.");
                 await transaction.CommitAsync(ct);
                 return Reply(existing);
             }
             var known = await db.ModelTurns.AsNoTracking().Where(t => t.ExecutionId == id && t.Attempt < execution.Attempt
-                && t.Sequence == input.Sequence && t.RequestHash == hash && t.State == "completed" && (t.BillingMode == "cli" || t.EstimatedCostUsd != null))
+                && t.Sequence == input.Sequence && t.RequestHash == hash && t.State == ModelTurnState.Completed && (t.BillingMode == BillingMode.Cli || t.EstimatedCostUsd != null))
                 .OrderByDescending(t => t.Attempt).FirstOrDefaultAsync(ct);
             if (known is not null)
             {
-                if (await db.ModelTurns.AnyAsync(t => t.ExecutionId == id && (t.State != "completed" || (t.BillingMode == "api" && t.EstimatedCostUsd == null)), ct)) throw Uncertain();
+                if (await db.ModelTurns.AnyAsync(t => t.ExecutionId == id && (t.State != ModelTurnState.Completed || (t.BillingMode == BillingMode.Api && t.EstimatedCostUsd == null)), ct)) throw Uncertain();
                 if (await db.ModelTurns.Where(t => t.ExecutionId == id).SumAsync(t => t.EstimatedCostUsd ?? t.ReservedUsd, ct) > execution.MaxCostUsd)
                     throw new ApiException(409, "budget_exceeded", "Cumulative model budget exceeded.");
                 await transaction.CommitAsync(ct);
@@ -94,7 +95,7 @@ public sealed class ModelTurnAccess(AppDbContext db, LeaseAccess leases, Profile
             }
             if (input.Sequence >= execution.MaxSteps || await db.ModelTurns.CountAsync(t => t.ExecutionId == id, ct) >= execution.MaxSteps)
                 throw new ApiException(409, "step_limit", "Model step limit reached.");
-            if (await db.ModelTurns.AnyAsync(t => t.ExecutionId == id && (t.State != "completed" || (t.BillingMode == "api" && t.EstimatedCostUsd == null)), ct)) throw Uncertain();
+            if (await db.ModelTurns.AnyAsync(t => t.ExecutionId == id && (t.State != ModelTurnState.Completed || (t.BillingMode == BillingMode.Api && t.EstimatedCostUsd == null)), ct)) throw Uncertain();
             if (await db.ModelTurns.AnyAsync(t => t.ExecutionId == id && t.Attempt == execution.Attempt && t.Sequence == input.Sequence, ct))
                 throw new ApiException(409, "model_operation_conflict", "A model operation already exists for this checkpoint.");
             var limits = await profiles.LimitsAsync(execution.OrganizationId, execution.ProjectId, profileId, ct);
@@ -117,7 +118,7 @@ public sealed class ModelTurnAccess(AppDbContext db, LeaseAccess leases, Profile
                 Attempt = execution.Attempt,
                 Sequence = input.Sequence,
                 RequestHash = hash,
-                BillingMode = "cli",
+                BillingMode = BillingMode.Cli,
                 ReservedUsd = reserved
             };
             db.ModelTurns.Add(turn);
@@ -149,7 +150,7 @@ public sealed class ModelTurnAccess(AppDbContext db, LeaseAccess leases, Profile
                 execution.AgentProfileId ?? throw new InvalidDataException("Missing profile."), ct);
             if (await db.ExecutionCheckpoints.AnyAsync(c => c.ExecutionId == id && c.Attempt == execution.Attempt && c.Sequence > input.Sequence, ct))
                 throw new ApiException(409, "stale_context", "Context changed while the model was running.");
-            turn.State = "completed";
+            turn.State = ModelTurnState.Completed;
             turn.Action = JsonSerializer.Serialize(action, JsonOptions);
             turn.InputTokens = generated.InputTokens;
             turn.OutputTokens = generated.OutputTokens;
@@ -165,8 +166,8 @@ public sealed class ModelTurnAccess(AppDbContext db, LeaseAccess leases, Profile
         {
             // Await cleanup with an independent token even when the HTTP caller has disconnected.
             using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            await db.ModelTurns.Where(t => t.ExecutionId == id && t.OperationId == input.OperationId && t.State == "pending")
-                .ExecuteUpdateAsync(s => s.SetProperty(t => t.State, "uncertain")
+            await db.ModelTurns.Where(t => t.ExecutionId == id && t.OperationId == input.OperationId && t.State == ModelTurnState.Pending)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.State, ModelTurnState.Uncertain)
                     .SetProperty(t => t.FailureCode, failure is ApiException ? ((ApiException)failure).Code : "internal_error")
                     .SetProperty(t => t.FailureType, failure.GetType().Name)
                     .SetProperty(t => t.EstimatedCostUsd, consumption != null && consumption.EstimatedCostUsd >= 0 ? consumption.EstimatedCostUsd : null)
