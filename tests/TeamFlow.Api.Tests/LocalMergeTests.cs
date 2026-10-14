@@ -99,6 +99,62 @@ public sealed class LocalMergeTests : IDisposable
         Assert.Equal("branch_conflict", rewritten.Code);
     }
 
+    [Fact]
+    public async Task AStackedStepMergesOnlyAfterThePreviousStepAndFastForwardsAsync()
+    {
+        var first = await ArrangeAsync();
+        // The second step was built on the first step's published head while main still sits at the first step's base.
+        var branch = $"teamflow/{Guid.NewGuid():N}";
+        await GitAsync("checkout", "-q", "-b", branch, first.Snapshot.Branch);
+        File.WriteAllText(Path.Combine(_root, "b.txt"), "second step");
+        await GitAsync("add", "b.txt");
+        await CommitAsync("second step result");
+        var secondHead = await RevAsync("HEAD");
+        await GitAsync("checkout", "-q", "main");
+        var second = first.Snapshot with { BaseCommit = first.Head, Branch = branch, StackedOn = Guid.NewGuid() };
+
+        var early = await Assert.ThrowsAsync<ApiException>(() => first.Git.MergeAsync(first.Connection, second, secondHead, default));
+        Assert.Equal("previous_step_pending", early.Code);
+        Assert.Equal(first.Snapshot.BaseCommit, await RevAsync("main"));
+
+        await first.Git.MergeAsync(first.Connection, first.Snapshot, first.Head, default);
+        await first.Git.MergeAsync(first.Connection, second, secondHead, default);
+        Assert.Equal(secondHead, await RevAsync("main"));
+        Assert.Equal("second step", Read("b.txt"));
+    }
+
+    [Fact]
+    public async Task ASingleStepStillRejectsABaseThatOnlyLooksStackedAsync()
+    {
+        var scene = await ArrangeAsync();
+        await CommitAsync("someone else moved main");
+        var unstacked = await Assert.ThrowsAsync<ApiException>(() => scene.Git.MergeAsync(scene.Connection, scene.Snapshot with { StackedOn = null }, scene.Head, default));
+        Assert.Equal("base_changed", unstacked.Code);
+    }
+
+    [Fact]
+    public async Task IndependentExecutionsOnTheSameFolderPublishInParallelButOnlyTheFirstMergesAsync()
+    {
+        var scene = await ArrangeAsync();
+        async Task<(PublishedPullRequest Published, RepositorySnapshot Snapshot)> PublishAsync(string name)
+        {
+            var id = Guid.NewGuid();
+            var hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(name)));
+            var plan = new PublicationPlan(id, scene.Snapshot.BaseCommit, $"teamflow/{id:N}", name, "Parallel fixture", DateTimeOffset.UtcNow, [new(name + ".txt", name, hash)]);
+            var published = await scene.Git.PublishAsync(scene.Connection, plan, default);
+            return (published, scene.Snapshot with { Branch = plan.Branch });
+        }
+        // Two runners finish on the same base at the same moment: publication only writes objects and the execution's own ref.
+        var both = await Task.WhenAll(PublishAsync("first"), PublishAsync("second"));
+        Assert.Equal(scene.Snapshot.BaseCommit, await RevAsync("main"));
+        Assert.NotEqual(both[0].Published.HeadCommit, both[1].Published.HeadCommit);
+
+        await scene.Git.MergeAsync(scene.Connection, both[0].Snapshot, both[0].Published.HeadCommit, default);
+        var late = await Assert.ThrowsAsync<ApiException>(() => scene.Git.MergeAsync(scene.Connection, both[1].Snapshot, both[1].Published.HeadCommit, default));
+        Assert.Equal("base_changed", late.Code);
+        Assert.Equal(both[0].Published.HeadCommit, await RevAsync("main"));
+    }
+
     public void Dispose()
     {
         if (!Directory.Exists(_root)) return;

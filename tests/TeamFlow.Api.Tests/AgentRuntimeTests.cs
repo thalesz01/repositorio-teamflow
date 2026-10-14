@@ -19,6 +19,35 @@ namespace TeamFlow.Api.Tests;
 
 public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<DatabaseFixture>
 {
+    [Theory]
+    [InlineData("```json\n{\"tool\":\"read\",\"path\":\"answer.txt\"}\n```", true)]
+    [InlineData("invalid sensitive-fixture-content", false)]
+    public async Task ModelResponseFormatIsHandledAndFailureIsReportedAsync(string text, bool valid)
+    {
+        using var setup = await SetupAsync(new FixtureModel { Text = text });
+        using var response = await setup.Runner.PostAsJsonAsync(setup.Path + "/model-turn",
+            new ModelTurnInput(setup.Lease, Guid.NewGuid(), 0, new(["answer.txt"], ["answer.txt"])));
+        if (valid) { Assert.Equal("read", (await response.ReadAsync<ModelTurnReply>()).Action.Tool); return; }
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        Assert.Equal("invalid_model_response", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        using var scope = setup.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var turn = await db.ModelTurns.SingleAsync(t => t.ExecutionId == setup.Execution.Id);
+        Assert.Equal("invalid_model_response", turn.FailureCode); Assert.Equal("ApiException", turn.FailureType);
+        var path = ApiClient.TasksPath(setup.Project) + $"/{setup.Execution.TaskId}/executions/{setup.Execution.Id}/report";
+        using var report = await setup.Human.GetAsync(path);
+        var payload = await report.ReadAsync<JsonElement>();
+        Assert.Equal("model", payload.GetProperty("failure").GetProperty("phase").GetString());
+        Assert.Equal("invalid_model_response", payload.GetProperty("failure").GetProperty("code").GetString());
+        Assert.DoesNotContain("sensitive-fixture-content", await report.Content.ReadAsStringAsync());
+        await db.ExecutionCheckpoints.Where(c => c.ExecutionId == setup.Execution.Id).ExecuteDeleteAsync();
+        using var noCheckpoint = await setup.Human.GetAsync(path);
+        Assert.Equal(HttpStatusCode.OK, noCheckpoint.StatusCode);
+        Assert.Equal(JsonValueKind.Null, (await noCheckpoint.ReadAsync<JsonElement>()).GetProperty("steps").ValueKind);
+        using var foreign = setup.Factory.CreateClient(); await foreign.RegisterAsync();
+        using var denied = await foreign.GetAsync(path); Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
+    }
+
     [Fact]
     public async Task PaidOperationIsIdempotentAndCumulativeBudgetStopsNextCallAsync()
     {
@@ -62,6 +91,91 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
         var path = ApiClient.TasksPath(setup.Project) + $"/{setup.Execution.TaskId}/executions/{setup.Execution.Id}";
         using var response = await setup.Human.GetAsync(path + "/progress");
         Assert.Equal("Feito, mas faltou criar o arquivo de rotas.", (await response.ReadAsync<ExecutionProgress>()).AgentSummary);
+    }
+
+    private static async Task MakeAnalysisAsync(Scenario setup)
+    {
+        using var scope = setup.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.WorkItems.Where(t => t.Id == setup.Execution.TaskId).ExecuteUpdateAsync(set => set.SetProperty(t => t.Kind, "analysis"));
+        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"Executions\" SET \"TaskSnapshot\" = jsonb_set(\"TaskSnapshot\"::jsonb, '{{kind}}', '\"analysis\"')::jsonb WHERE \"Id\" = {setup.Execution.Id}");
+    }
+
+    private static ModelTurnInput Turn(Scenario setup, int sequence = 0) => new(setup.Lease, Guid.NewGuid(), sequence, new(["answer.txt"], ["answer.txt"]));
+
+    [Fact]
+    public async Task AnalysisReadsAndSearchesNeverWritesAndAnAnswerClosesTheTaskAsync()
+    {
+        var model = new FixtureModel { Text = "{\"tool\":\"write\",\"path\":\"answer.txt\",\"content\":\"x\",\"expectedHash\":\"missing\"}" };
+        using var writer = await SetupAsync(model);
+        await MakeAnalysisAsync(writer);
+        using var denied = await writer.Runner.PostAsJsonAsync(writer.Path + "/model-turn", Turn(writer));
+        Assert.Equal(HttpStatusCode.BadGateway, denied.StatusCode);
+        model.Text = "{\"tool\":\"search\",\"path\":null,\"content\":null,\"expectedHash\":null}";
+        using var blank = await SetupAsync(model);
+        await MakeAnalysisAsync(blank);
+        using var noQuery = await blank.Runner.PostAsJsonAsync(blank.Path + "/model-turn", Turn(blank));
+        Assert.Equal(HttpStatusCode.BadGateway, noQuery.StatusCode);
+
+        model.Text = "{\"tool\":\"search\",\"path\":null,\"content\":\"discount\",\"expectedHash\":null}";
+        using var setup = await SetupAsync(model);
+        await MakeAnalysisAsync(setup);
+        using var searched = await setup.Runner.PostAsJsonAsync(setup.Path + "/model-turn", Turn(setup));
+        Assert.Equal("search", (await searched.ReadAsync<ModelTurnReply>()).Action.Tool);
+        Assert.Contains("read-only analysis", model.LastPrompt);
+        var evidence = setup.Context with { Evidence = [new(1, "search", null, true, "Orders.cs:12: if (discount > 0.2m) reject")] };
+        using var saved = await setup.Runner.PutAsJsonAsync(setup.Path + "/checkpoint/", new CheckpointInput(setup.Lease, evidence));
+        saved.EnsureSuccessStatusCode();
+        // No answer yet: an analysis cannot close without the content of its closing action.
+        using var early = await setup.Runner.PostAsJsonAsync(setup.Path + "/result", new ExecutionResultInput(setup.Lease, Guid.NewGuid(), 1, true, "analysis_answered"));
+        Assert.Equal(HttpStatusCode.Conflict, early.StatusCode);
+        // An analysis never passes as a change.
+        using var asChange = await setup.Runner.PostAsJsonAsync(setup.Path + "/result", new ExecutionResultInput(setup.Lease, Guid.NewGuid(), 1, true, "tests_passed"));
+        Assert.Equal(HttpStatusCode.Conflict, asChange.StatusCode);
+        model.Text = "{\"tool\":\"finish\",\"path\":null,\"content\":\"Descontos acima de 20% sao recusados em Orders.cs.\",\"expectedHash\":null}";
+        using var answered = await setup.Runner.PostAsJsonAsync(setup.Path + "/model-turn", Turn(setup, 1));
+        Assert.Equal("finish", (await answered.ReadAsync<ModelTurnReply>()).Action.Tool);
+        using var done = await setup.Runner.PostAsJsonAsync(setup.Path + "/result", new ExecutionResultInput(setup.Lease, Guid.NewGuid(), 1, true, "analysis_answered"));
+        done.EnsureSuccessStatusCode();
+        using var scope = setup.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var execution = await db.Executions.AsNoTracking().SingleAsync(e => e.Id == setup.Execution.Id);
+        Assert.Equal(ExecutionState.Succeeded, execution.State); Assert.Equal("analysis_answered", execution.ResultCode);
+        Assert.Equal(TaskStage.Done, (await db.WorkItems.AsNoTracking().SingleAsync(t => t.Id == setup.Execution.TaskId)).Stage);
+        using var progress = await setup.Human.GetAsync(ApiClient.TasksPath(setup.Project) + $"/{setup.Execution.TaskId}/executions/{setup.Execution.Id}/progress");
+        Assert.Equal("Descontos acima de 20% sao recusados em Orders.cs.", (await progress.ReadAsync<ExecutionProgress>()).AgentSummary);
+        // Nothing is published or reviewed for an analysis.
+        Assert.Null(execution.PublicationState);
+    }
+
+    [Fact]
+    public async Task ChangeResultCannotBeReportedAsAnAnalysisAnswerAsync()
+    {
+        using var setup = await SetupAsync(new FixtureModel());
+        var evidence = setup.Context with { Evidence = [new(1, "search", null, true, "x")] };
+        using var saved = await setup.Runner.PutAsJsonAsync(setup.Path + "/checkpoint/", new CheckpointInput(setup.Lease, evidence));
+        saved.EnsureSuccessStatusCode();
+        using var refused = await setup.Runner.PostAsJsonAsync(setup.Path + "/result", new ExecutionResultInput(setup.Lease, Guid.NewGuid(), 1, true, "analysis_answered"));
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+    }
+
+    [Fact]
+    public async Task ChosenSkillTravelsInThePromptWithoutWideningThePolicyAsync()
+    {
+        var model = new FixtureModel();
+        using var setup = await SetupAsync(model);
+        using (var scope = setup.Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var snapshot = JsonSerializer.Serialize(new SkillSnapshot("project-claude:review", "review", "project", new string('a', 64), "Use short sentences and name every file you touch."), ApiClient.JsonOptions);
+            await db.Executions.Where(e => e.Id == setup.Execution.Id).ExecuteUpdateAsync(set => set.SetProperty(e => e.SkillSnapshot, snapshot).SetProperty(e => e.SkillName, "review"));
+        }
+        var input = new ModelTurnInput(setup.Lease, Guid.NewGuid(), 0, new(["answer.txt"], ["answer.txt"]));
+        using var response = await setup.Runner.PostAsJsonAsync(setup.Path + "/model-turn", input);
+        response.EnsureSuccessStatusCode();
+        Assert.Contains("Use short sentences and name every file you touch.", model.LastPrompt);
+        Assert.Contains("controller policy above always wins", model.LastPrompt);
+        Assert.True(model.LastPrompt!.IndexOf("Policy:", StringComparison.Ordinal) < model.LastPrompt.IndexOf("Use short sentences", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -161,14 +275,15 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
         {
             new(1, "read", "answer.txt", true, "41", new string('a', 64)),
             new(2, "write", "answer.txt", true, "file_updated", new string('b', 64)),
-            new(3, "test", null, true, "exit=0; timeout=False; truncated=False")
+            new(3, "test", null, false, "{\"ExitCode\":1,\"TimedOut\":false,\"OutputTruncated\":false}"),
+            new(4, "test", null, true, "exit=0; timeout=False; truncated=False")
         })
         {
             context = context with { Evidence = [.. context.Evidence, evidence] };
             using var checkpoint = await setup.Runner.PutAsJsonAsync(setup.Path + "/checkpoint/", new CheckpointInput(setup.Lease, context));
             checkpoint.EnsureSuccessStatusCode();
         }
-        result = result with { CheckpointSequence = 3 };
+        result = result with { CheckpointSequence = 4 };
         var responses = await Task.WhenAll(Enumerable.Range(0, 2).Select(_ => setup.Runner.PostAsJsonAsync(setup.Path + "/result", result)));
         foreach (var response in responses) { using (response) Assert.True((await response.ReadAsync<ExecutionResultReply>()).Validated); }
         fixture.Clock.Advance(TimeSpan.FromMinutes(20));
@@ -452,10 +567,12 @@ public sealed class AgentRuntimeTests(DatabaseFixture fixture) : IClassFixture<D
         public int Calls => _calls;
         public string Text { get; set; } = "{\"tool\":\"read\",\"path\":\"answer.txt\"}";
         public decimal? Cost { get; init; } = 0.001m;
+        public string? LastPrompt { get; private set; }
         public Func<CancellationToken, Task>? BeforeReply { get; init; }
-        public async Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budgetUsd, CancellationToken ct)
+        public async Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budgetUsd, CancellationToken ct, string? responseSchema = null)
         {
             Interlocked.Increment(ref _calls);
+            LastPrompt = prompt;
             Assert.Contains("untrusted data", prompt);
             if (BeforeReply is not null) await BeforeReply(ct);
             return new(Text, Cost is null ? null : 100, Cost is null ? null : 10, Cost);

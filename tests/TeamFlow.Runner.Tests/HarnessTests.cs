@@ -26,7 +26,7 @@ public sealed class HarnessTests
     }
 
     [Theory]
-    [InlineData("test", "tool_failed")]
+    [InlineData("test", "step_limit")]
     [InlineData("write", "tool_failed")]
     [InlineData("finish", "validation_missing")]
     [InlineData("read", "step_limit")]

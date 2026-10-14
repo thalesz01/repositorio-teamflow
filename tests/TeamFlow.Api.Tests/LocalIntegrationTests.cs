@@ -29,7 +29,7 @@ public sealed class LocalIntegrationTests(DatabaseFixture fixture) : IClassFixtu
         var model = new CodexTextModel(configuration);
         var profile = new AgentProfile { Provider = "codex", Model = "default", MaxInputBytes = 4096, MaxOutputTokens = 128, TimeoutSeconds = 5 };
         var reply = await model.GenerateAsync(profile, "& echo cannot-execute-this", 0, CancellationToken.None);
-        Assert.Equal("{\"tool\":\"finish\"}", reply.Text); Assert.Null(reply.EstimatedCostUsd); Assert.Null(reply.InputTokens);
+        Assert.Equal("{\"tool\":\"finish\"}", reply.Text); Assert.Null(reply.EstimatedCostUsd); Assert.Equal(1000, reply.InputTokens);
         var failure = await Assert.ThrowsAsync<ApiException>(() => model.GenerateAsync(profile, "fail", 0, CancellationToken.None));
         Assert.Equal("codex_failed", failure.Code); Assert.DoesNotContain("sensitive", failure.Message);
         Assert.Equal("provider_invalid_response", (await Assert.ThrowsAsync<ApiException>(() => model.GenerateAsync(profile, "empty", 0, CancellationToken.None))).Code);

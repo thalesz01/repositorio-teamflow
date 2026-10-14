@@ -42,6 +42,42 @@ public sealed class FourStepFlowTests(DatabaseFixture fixture) : IClassFixture<D
     }
 
     [Fact]
+    public async Task AnalysisTaskNeedsAFolderAndIsMarkedAsAnalysisAsync()
+    {
+        using var client = fixture.Factory.CreateClient();
+        await client.RegisterAsync();
+        var project = await client.CreateProjectAsync();
+        var root = Path.Combine(Path.GetTempPath(), "teamflow-analysis-" + Guid.NewGuid().ToString("N"));
+        var repository = Path.Combine(root, "api");
+        Directory.CreateDirectory(repository);
+        var configuration = fixture.Factory.Services.GetRequiredService<IConfiguration>();
+        try
+        {
+            await LocalIntegrationTests.GitAsync(repository, ["init", "-b", "main"]);
+            await LocalIntegrationTests.GitAsync(repository, ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "--allow-empty", "-m", "One"]);
+            configuration["Local:BrowseRoots:0"] = root; configuration["Local:AllowRepositorySelection"] = "true";
+            var tasks = ApiClient.TasksPath(project) + "/";
+            TaskInput Draft(string? kind, string? folder) => new("What is the discount rule?", "Where is the rule for discounts on POST /orders?", ["The question is answered."], null, [],
+                FolderPath: folder, Stage: TaskStage.Ready, Kind: kind);
+            using var noFolder = await client.SendAsync(HttpMethod.Post, tasks, Draft("analysis", null));
+            Assert.Equal(HttpStatusCode.BadRequest, noFolder.StatusCode);
+            using var unknown = await client.SendAsync(HttpMethod.Post, tasks, Draft("migration", repository));
+            Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+            using var created = await client.SendAsync(HttpMethod.Post, tasks, Draft("analysis", repository));
+            var analysis = await created.ReadAsync<TaskDto>();
+            Assert.Equal("analysis", analysis.Kind); Assert.Equal(TaskStage.Ready, analysis.Stage); Assert.Equal(repository, analysis.FolderPath);
+            using var ordinary = await client.SendAsync(HttpMethod.Post, tasks, Draft(null, repository));
+            Assert.Equal("change", (await ordinary.ReadAsync<TaskDto>()).Kind);
+        }
+        finally
+        {
+            configuration["Local:AllowRepositorySelection"] = "false";
+            foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)) File.SetAttributes(file, FileAttributes.Normal);
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task TaskKeepsItsFolderStartsReadyAndEachExecutionStartsFromTheCurrentBranchAsync()
     {
         using var client = fixture.Factory.CreateClient();

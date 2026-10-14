@@ -58,20 +58,22 @@ public sealed class HarnessIntegrationTests(DatabaseFixture fixture) : IClassFix
         var tools = new WorkspaceTools(workspace, new DockerSandbox(), ["answer.txt"], ["answer.txt"],
             new SandboxCommand("/bin/sh", ["-c", "test \"$(cat answer.txt)\" = 42"], TimeSpan.FromSeconds(10)));
         var result = await new AgentHarness(new FixtureModel(), new ApiCheckpoint(runner, checkpointPath, lease), tools)
-            .RunAsync(context, 4, TimeSpan.FromSeconds(30), default);
+            .RunAsync(context, 6, TimeSpan.FromSeconds(30), default);
         Assert.True(result.Validated);
         var patch = await GitAsync("diff", "--", "answer.txt");
         Assert.Contains("-41", patch);
         Assert.Contains("+42", patch);
         using var read = await runner.PostAsJsonAsync(checkpointPath + "/read", new CheckpointReadInput(lease));
         var saved = await read.ReadAsync<CheckpointReply>();
-        Assert.Equal(3, saved.Sequence);
+        Assert.Equal(5, saved.Sequence);
         Assert.Equal(commit, saved.Context.BaseCommit);
         Assert.Equal("test", saved.Context.Evidence[2].Tool);
-        Assert.True(saved.Context.Evidence[2].Succeeded);
+        Assert.False(saved.Context.Evidence[2].Succeeded);
+        Assert.True(saved.Context.Evidence[4].Succeeded);
+        Assert.Contains("StandardError", saved.Context.Evidence[2].Detail);
         using var finalScope = fixture.Factory.Services.CreateScope();
         var db = finalScope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Assert.Equal(4, await db.ExecutionCheckpoints.CountAsync(c => c.ExecutionId == execution.Id));
+        Assert.Equal(6, await db.ExecutionCheckpoints.CountAsync(c => c.ExecutionId == execution.Id));
         Assert.Equal(TaskStage.Execution, (await db.WorkItems.SingleAsync(t => t.Id == task.Id)).Stage);
 
         async Task<string> GitAsync(params string[] arguments)
@@ -105,8 +107,10 @@ public sealed class HarnessIntegrationTests(DatabaseFixture fixture) : IClassFix
         public Task<AgentAction> NextAsync(PortableContext context, CancellationToken ct) => Task.FromResult(context.Evidence.Length switch
         {
             0 => new AgentAction("read", "answer.txt"),
-            1 => new AgentAction("write", "answer.txt", "42", context.Evidence[0].Hash),
+            1 => new AgentAction("write", "answer.txt", "40", context.Evidence[0].Hash),
             2 => new AgentAction("test"),
+            3 => new AgentAction("write", "answer.txt", "42", context.Evidence[1].Hash),
+            4 => new AgentAction("test"),
             _ => new AgentAction("finish")
         });
     }

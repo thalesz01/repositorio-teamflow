@@ -114,7 +114,7 @@ public sealed class PlanningTests(DatabaseFixture fixture) : IClassFixture<Datab
         public int Calls { get; private set; }
         public bool LoseResponse { get; set; }
         public string Prompt { get; private set; } = "";
-        public Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budget, CancellationToken ct)
+        public Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budget, CancellationToken ct, string? responseSchema = null)
         {
             Calls++; Prompt = prompt;
             if (LoseResponse) throw new HttpRequestException("Simulated response lost after provider processing.");

@@ -178,7 +178,7 @@ public sealed class MvpJourneyTests(DatabaseFixture fixture) : IClassFixture<Dat
         public Guid? ExpectedSourceId { get; set; }
         public bool SawSourceDuringPlanning { get; private set; }
         public bool SawSourceDuringExecution { get; private set; }
-        public Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budget, CancellationToken ct)
+        public Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budget, CancellationToken ct, string? responseSchema = null)
         {
             Calls++; Assert.Contains("untrusted data", prompt);
             if (prompt.StartsWith("Propose", StringComparison.Ordinal))
