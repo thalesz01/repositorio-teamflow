@@ -190,7 +190,7 @@ Leia também [TASKS.md](TASKS.md) antes de implementar. Reivindique a tarefa atu
 
 Documentar decisões de arquitetura relevantes em `docs/decisions/NNNN-title.md`: contexto, decisão, consequências e status. Não exigir ADR para cada classe ou escolha local. Mudanças em linguagem, fronteiras, fornecedor de workflow, sandbox ou fonte de verdade precisam de decisão explícita com o responsável pelo projeto; preparar a proposta concreta antes de pedir escolha. Não transformar escolhas rotineiras em aprovações.
 
-Commits pequenos e coesos, com prefixos feat, fix, refactor, test, docs, build ou chore. PR explica problema, comportamento final, validação e limitações. Não inventar resultados. Não publicar, enviar mensagens externas, criar recursos pagos ou fazer merge sem autorização aplicável.
+Branches (ADR 0017): `develop` é a principal; cada tarefa nasce de `develop` atualizada em `feature/<ID>-nome-curto` (ou `fix/…`, `chore/…`) e volta por pull request; `main` só avança a partir de `develop` com decisão do responsável. Commits pequenos e coesos, com prefixos feat, fix, refactor, test, docs, build ou chore. PR explica problema, comportamento final, validação e limitações. Não inventar resultados. Não publicar, enviar mensagens externas, criar recursos pagos ou fazer merge sem autorização aplicável.
 
 ## 15. Definição de concluído
 
