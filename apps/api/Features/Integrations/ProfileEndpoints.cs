@@ -16,6 +16,11 @@ public static class ProfileEndpoints
     {
         var group = routes.MapGroup("/api/v1/organizations/{organizationId:guid}/projects/{projectId:guid}/profiles")
             .RequireAuthorization().WithTags("Agent profiles");
+        group.MapGet("/agents", async (Guid organizationId, Guid projectId, ClaimsPrincipal user, ProjectAccess access, LocalCliAgents agents, CancellationToken ct) =>
+        {
+            await access.RequireAsync(organizationId, projectId, user, ct);
+            return Results.Ok(await agents.ListAsync(ct));
+        }).Produces<CliAgent[]>();
         group.MapGet("/machine", async (Guid organizationId, Guid projectId, ClaimsPrincipal user, ProjectAccess access, CodexMachine machine, CancellationToken ct) =>
         {
             await access.RequireAsync(organizationId, projectId, user, ct);

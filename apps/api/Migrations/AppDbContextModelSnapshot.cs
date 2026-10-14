@@ -307,6 +307,13 @@ namespace TeamFlow.Api.Migrations
                     b.Property<Guid?>("RunnerCredentialId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("SkillName")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("SkillSnapshot")
+                        .HasColumnType("text");
+
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -408,9 +415,20 @@ namespace TeamFlow.Api.Migrations
                         .HasColumnType("character varying(8)")
                         .HasDefaultValue("api");
 
+                    b.Property<int?>("CachedInputTokens")
+                        .HasColumnType("integer");
+
                     b.Property<decimal?>("EstimatedCostUsd")
                         .HasPrecision(20, 12)
                         .HasColumnType("numeric(20,12)");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("FailureType")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
 
                     b.Property<int?>("InputTokens")
                         .HasColumnType("integer");
@@ -461,6 +479,9 @@ namespace TeamFlow.Api.Migrations
                         .HasPrecision(16, 6)
                         .HasColumnType("numeric(16,6)");
 
+                    b.Property<bool>("IsTaskSelection")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("MaxInputBytes")
                         .HasColumnType("integer");
 
@@ -493,6 +514,10 @@ namespace TeamFlow.Api.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)")
                         .HasDefaultValue("codex");
+
+                    b.Property<string>("ReasoningEffort")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1011,6 +1036,9 @@ namespace TeamFlow.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text[]");
 
+                    b.Property<Guid?>("AgentProfileId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("AnalysisId")
                         .HasColumnType("uuid");
 
@@ -1037,13 +1065,26 @@ namespace TeamFlow.Api.Migrations
                         .HasMaxLength(1024)
                         .HasColumnType("character varying(1024)");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("change");
+
                     b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PreviousTaskId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("RepositoryConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SequenceStartedBy")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Stage")
@@ -1064,9 +1105,17 @@ namespace TeamFlow.Api.Migrations
 
                     b.HasIndex("AssigneeId");
 
+                    b.HasIndex("PreviousTaskId")
+                        .IsUnique()
+                        .HasFilter("\"PreviousTaskId\" IS NOT NULL");
+
                     b.HasIndex("ProjectId", "OrganizationId");
 
+                    b.HasIndex("AgentProfileId", "OrganizationId", "ProjectId");
+
                     b.HasIndex("AnalysisId", "OrganizationId", "ProjectId");
+
+                    b.HasIndex("PreviousTaskId", "OrganizationId", "ProjectId");
 
                     b.HasIndex("RepositoryConnectionId", "OrganizationId", "ProjectId");
 
@@ -1282,9 +1331,21 @@ namespace TeamFlow.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("TeamFlow.Api.Features.Integrations.AgentProfile", null)
+                        .WithMany()
+                        .HasForeignKey("AgentProfileId", "OrganizationId", "ProjectId")
+                        .HasPrincipalKey("Id", "OrganizationId", "ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("TeamFlow.Api.Features.Memory.DemandAnalysis", null)
                         .WithMany()
                         .HasForeignKey("AnalysisId", "OrganizationId", "ProjectId")
+                        .HasPrincipalKey("Id", "OrganizationId", "ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("TeamFlow.Api.Features.Tasks.WorkItem", null)
+                        .WithMany()
+                        .HasForeignKey("PreviousTaskId", "OrganizationId", "ProjectId")
                         .HasPrincipalKey("Id", "OrganizationId", "ProjectId")
                         .OnDelete(DeleteBehavior.Restrict);
 

@@ -29,7 +29,7 @@ public sealed class ExecutionTransfer(AppDbContext db)
         var context = JsonSerializer.Deserialize<CheckpointContext>(checkpoint.Context, JsonOptions)
             ?? throw new InvalidDataException("Invalid parent context.");
         context = context with { Memory = null, History = null };
-        if (context.BaseCommit != repository.BaseCommit || context.Pending.Length != 0 || context.Evidence.Any(e => !e.Succeeded))
+        if (context.BaseCommit != repository.BaseCommit || context.Pending.Length != 0 || !TestEvidence.IsValidated(context))
             throw new ApiException(409, "transfer_evidence_missing", "Parent portable evidence is incomplete.");
         var receipts = await db.ModelTurns.AsNoTracking().Where(t => t.ExecutionId == parent.Id && t.OrganizationId == parent.OrganizationId
             && t.ProjectId == parent.ProjectId).OrderByDescending(t => t.Attempt).Take(200).ToListAsync(ct);

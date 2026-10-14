@@ -17,6 +17,6 @@ public sealed class GitConnection
 }
 
 public sealed record GitDto(Guid Id, string Provider, long RepositoryId, string RemoteUrl, string BaseBranch, string BaseCommit, Guid Version, DateTimeOffset? RevokedAt);
-public sealed record RepositorySnapshot(Guid ConnectionId, Guid ConnectionVersion, long RepositoryId, string RemoteUrl, string BaseBranch, string BaseCommit, string Branch, string? LocalPath = null);
+public sealed record RepositorySnapshot(Guid ConnectionId, Guid ConnectionVersion, long RepositoryId, string RemoteUrl, string BaseBranch, string BaseCommit, string Branch, string? LocalPath = null, Guid? StackedOn = null);
 // The runner only accepts the literal "local" grant: checkout reads the authorized folder, no credential exists.
 public sealed record CheckoutGrant(string Token, DateTimeOffset ExpiresAt);

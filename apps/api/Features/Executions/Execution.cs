@@ -6,6 +6,9 @@ public sealed class Execution
 {
     public Guid? ParentExecutionId { get; set; }
     public string? ReviewFeedback { get; set; }
+    // The skill chosen for this execution, kept as it was read so the run stays reproducible and portable.
+    public string? SkillName { get; set; }
+    public string? SkillSnapshot { get; set; }
     public string? ReviewState { get; set; }
     public string? ReviewHeadCommit { get; set; }
     public bool ReviewCiPassed { get; set; }
@@ -56,8 +59,8 @@ public sealed class Execution
     public DateTimeOffset? ResultCreatedAt { get; set; }
 }
 
-public sealed record ExecutionInput(Guid Version, int MaxDurationSeconds = 900, int MaxAttempts = 3, int MaxSteps = 50, decimal MaxCostUsd = 5, Guid? AgentProfileId = null, Guid? ParentExecutionId = null, string? Feedback = null);
+public sealed record ExecutionInput(Guid Version, int MaxDurationSeconds = 900, int MaxAttempts = 3, int MaxSteps = 50, decimal MaxCostUsd = 5, Guid? AgentProfileId = null, Guid? ParentExecutionId = null, string? Feedback = null, string? Skill = null);
 public sealed record ExecutionDto(Guid Id, Guid TaskId, ExecutionState State, int Attempt, int MaxAttempts,
-    int MaxDurationSeconds, int MaxSteps, decimal MaxCostUsd, DateTimeOffset CreatedAt, bool CancellationRequested, string? FailureCode, Guid? ParentExecutionId = null);
+    int MaxDurationSeconds, int MaxSteps, decimal MaxCostUsd, DateTimeOffset CreatedAt, bool CancellationRequested, string? FailureCode, Guid? ParentExecutionId = null, string? Skill = null);
 public sealed record ExecutionLease(Guid ExecutionId, Guid WorkerId, Guid LeaseToken, DateTimeOffset LeaseExpiresAt,
     DateTimeOffset DeadlineAt, int Attempt, string TaskSnapshot, int MaxSteps, decimal MaxCostUsd);

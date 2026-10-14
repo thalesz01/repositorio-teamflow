@@ -47,7 +47,10 @@ public sealed class RepositoryAccess(AppDbContext db, LeaseAccess leases, LocalR
         return connection;
     }
 
-    public async Task<string?> SnapshotAsync(Guid organizationId, Guid projectId, Guid executionId, CancellationToken ct, Guid? connectionId = null)
+    /// <summary>The step this one continues: its execution and the head commit it published on its own branch.</summary>
+    public sealed record StackedBase(Guid ExecutionId, string Head);
+
+    public async Task<string?> SnapshotAsync(Guid organizationId, Guid projectId, Guid executionId, CancellationToken ct, Guid? connectionId = null, StackedBase? stacked = null)
     {
         var connection = connectionId is { } chosen
             ? await db.GitConnections.SingleOrDefaultAsync(g => g.Id == chosen && g.OrganizationId == organizationId
@@ -77,8 +80,21 @@ public sealed class RepositoryAccess(AppDbContext db, LeaseAccess leases, LocalR
             var tip = await local.VerifyAsync(connection.LocalPath, connection.BaseBranch, ct);
             if (tip != connection.BaseCommit) { connection.BaseCommit = tip; await db.SaveChangesAsync(ct); }
         }
-        return connection is null ? null : JsonSerializer.Serialize(new RepositorySnapshot(connection.Id, connection.Version,
-            connection.RepositoryId, GitRules.Url(connection), connection.BaseBranch, connection.BaseCommit, $"teamflow/{executionId:N}", connection.LocalPath), JsonOptions);
+        if (connection is null) return null;
+        var baseCommit = connection.BaseCommit;
+        Guid? stackedOn = null;
+        if (stacked is not null)
+        {
+            // A sequence step starts from the previous step's published commit: it must still be that branch's tip and sit on top of the base branch.
+            var path = local.AuthorizedPath(connection.OrganizationId, connection.ProjectId, connection.LocalPath);
+            if (await localGit.BranchHeadAsync(connection, $"teamflow/{stacked.ExecutionId:N}", ct) != stacked.Head)
+                throw new ApiException(409, "branch_conflict", "The previous step's branch changed; run the sequence again.");
+            if (!await local.IsAncestorAsync(path, connection.BaseCommit, stacked.Head, ct))
+                throw new ApiException(409, "base_changed", "The base branch moved after the previous step; run the sequence again.");
+            baseCommit = stacked.Head; stackedOn = stacked.ExecutionId;
+        }
+        return JsonSerializer.Serialize(new RepositorySnapshot(connection.Id, connection.Version,
+            connection.RepositoryId, GitRules.Url(connection), connection.BaseBranch, baseCommit, $"teamflow/{executionId:N}", connection.LocalPath, stackedOn), JsonOptions);
     }
 
     public async Task<PublishedPullRequest> PublishAsync(Guid organizationId, Guid projectId, RepositorySnapshot snapshot,
@@ -123,7 +139,8 @@ public sealed class RepositoryAccess(AppDbContext db, LeaseAccess leases, LocalR
         if (snapshot is null) throw new ApiException(409, "repository_not_configured", "Execution has no repository snapshot.");
         var connection = await RequireCurrentAsync(execution.OrganizationId, execution.ProjectId, snapshot, ct);
         local.AuthorizedPath(connection.OrganizationId, connection.ProjectId, connection.LocalPath);
-        if (await local.VerifyAsync(connection.LocalPath, connection.BaseBranch, ct) != snapshot.BaseCommit)
+        var tip = await local.VerifyAsync(connection.LocalPath, connection.BaseBranch, ct);
+        if (tip != snapshot.BaseCommit && !(snapshot.StackedOn is not null && await local.IsAncestorAsync(connection.LocalPath, tip, snapshot.BaseCommit, ct)))
             throw new ApiException(409, "base_changed", "Local base branch changed; schedule a new validated execution.");
         await leases.RequireAsync(executionId, leaseToken, user, ct);
         await RequireUnchangedAsync(connection, snapshot, "Local connection changed during checkout authorization.", ct);

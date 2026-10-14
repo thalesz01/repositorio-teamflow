@@ -64,9 +64,7 @@ public sealed class PublicationAccess(AppDbContext db, TaskAccess tasks, Reposit
                 ?? throw new ApiException(409, "publication_evidence_missing", "Validated checkpoint is unavailable.");
             var context = JsonSerializer.Deserialize<CheckpointContext>(checkpoint.Context, JsonOptions)
                 ?? throw new InvalidDataException("Invalid checkpoint.");
-            var lastEdit = Array.FindLastIndex(context.Evidence, e => e.Tool == "write" && e.Succeeded);
-            if (lastEdit < 0 || context.Pending.Length != 0 || context.Evidence.Any(e => !e.Succeeded)
-                || !context.Evidence.Skip(lastEdit + 1).Any(e => e.Tool == "test" && e.Succeeded))
+            if (!TestEvidence.IsValidated(context))
                 throw new ApiException(409, "validation_required", "Verified write and later successful tests are required.");
             var receipts = await db.ModelTurns.AsNoTracking().Where(t => t.ExecutionId == id && t.OrganizationId == execution.OrganizationId
                 && t.ProjectId == execution.ProjectId).OrderByDescending(t => t.Attempt).Take(200).ToListAsync(timeout.Token);
@@ -95,7 +93,7 @@ public sealed class PublicationAccess(AppDbContext db, TaskAccess tasks, Reposit
                 + "\n\nChanges:\n" + string.Join("\n", files.Select(f => $"- {f.Path}: SHA-256 {f.Hash}"))
                 + "\n\nSuccessful controller tests: " + context.Evidence.Count(e => e.Tool == "test" && e.Succeeded)
                 + "\nPending: none. Tool outputs omitted. Independent review of the exact head is still required.";
-            var plan = new PublicationPlan(id, repository.BaseCommit, repository.Branch, task.Title, body, execution.CreatedAt, files.ToArray());
+            var plan = new PublicationPlan(id, repository.BaseCommit, repository.Branch, task.Title, body, execution.CreatedAt, files.ToArray(), repository.StackedOn is not null);
             var published = await repositories.PublishAsync(execution.OrganizationId, execution.ProjectId, repository, plan, timeout.Token);
             await using var transaction = await db.Database.BeginTransactionAsync(timeout.Token);
             await db.Entry(execution).ReloadAsync(timeout.Token);

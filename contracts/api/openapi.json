@@ -6,7 +6,7 @@
   },
   "servers": [
     {
-      "url": "http://localhost:15081/"
+      "url": "http://127.0.0.1:5099/"
     }
   ],
   "paths": {
@@ -862,6 +862,159 @@
         }
       }
     },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/sequence/start": {
+      "post": {
+        "tags": [
+          "Tasks"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/sequence/stop": {
+      "post": {
+        "tags": [
+          "Tasks"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/skills": {
+      "get": {
+        "tags": [
+          "Tasks"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SkillInfo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/executions": {
       "post": {
         "tags": [
@@ -1114,6 +1267,56 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/tasks/{taskId}/executions/{executionId}/report": {
+      "get": {
+        "tags": [
+          "Executions"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
           }
         }
       }
@@ -3177,6 +3380,48 @@
         }
       }
     },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/profiles/agents": {
+      "get": {
+        "tags": [
+          "Agent profiles"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CliAgent"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/organizations/{organizationId}/projects/{projectId}/profiles/machine": {
       "get": {
         "tags": [
@@ -3392,6 +3637,25 @@
   },
   "components": {
     "schemas": {
+      "AgentChoice": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "default": "codex"
+          },
+          "model": {
+            "type": "string",
+            "default": "default"
+          },
+          "effort": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "AgentToolPolicy": {
         "required": [
           "readable",
@@ -3620,8 +3884,8 @@
               "type": "string"
             }
           },
-          "memory": { },
-          "history": { }
+          "memory": {},
+          "history": {}
         }
       },
       "CheckpointEvidence": {
@@ -3742,6 +4006,58 @@
             ],
             "format": "int32",
             "default": 30
+          }
+        }
+      },
+      "CliAgent": {
+        "required": [
+          "id",
+          "name",
+          "installed",
+          "authenticated",
+          "enabled",
+          "models"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "installed": {
+            "type": "boolean"
+          },
+          "authenticated": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CliModel"
+            }
+          }
+        }
+      },
+      "CliModel": {
+        "required": [
+          "id",
+          "efforts"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "efforts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -3984,6 +4300,12 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "skill": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -4052,6 +4374,12 @@
               "null",
               "string"
             ]
+          },
+          "skill": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -4113,6 +4441,15 @@
               "null",
               "string"
             ]
+          },
+          "cachedInputTokens": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -4427,7 +4764,7 @@
           }
         }
       },
-      "JsonElement": { },
+      "JsonElement": {},
       "LocalDirectoryEntry": {
         "required": [
           "name",
@@ -5924,7 +6261,7 @@
           "limits": {
             "$ref": "#/components/schemas/RunnerLimits"
           },
-          "repository": { },
+          "repository": {},
           "agentProfileId": {
             "type": [
               "null",
@@ -5932,8 +6269,8 @@
             ],
             "format": "uuid"
           },
-          "memory": { },
-          "transfer": { }
+          "memory": {},
+          "transfer": {}
         }
       },
       "RunnerStatusDto": {
@@ -5991,6 +6328,42 @@
             "format": "uuid"
           },
           "email": {
+            "type": "string"
+          }
+        }
+      },
+      "SkillInfo": {
+        "required": [
+          "id",
+          "name",
+          "description",
+          "source",
+          "bytes",
+          "preview"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "bytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "preview": {
             "type": "string"
           }
         }
@@ -6085,6 +6458,28 @@
               "null",
               "string"
             ]
+          },
+          "agentProfileId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "default": "change"
+          },
+          "previousTaskId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "sequenceRunning": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -6152,6 +6547,29 @@
                 "$ref": "#/components/schemas/TaskStage"
               }
             ]
+          },
+          "ai": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentChoice"
+              }
+            ]
+          },
+          "kind": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "previousTaskId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },

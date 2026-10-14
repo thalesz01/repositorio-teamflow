@@ -55,6 +55,26 @@ public sealed class LocalRepository(IConfiguration configuration)
         return process.ExitCode == 0 ? result : "";
     }
 
+    /// <summary>True when <paramref name="ancestor"/> is <paramref name="descendant"/> or one of its ancestors (git merge-base --is-ancestor).</summary>
+    public async Task<bool> IsAncestorAsync(string path, string ancestor, string descendant, CancellationToken ct)
+    {
+        if (!GitRules.IsCommit(ancestor) || !GitRules.IsCommit(descendant)) throw new ApiException(400, "invalid_repository", "Invalid commit.");
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        var start = new ProcessStartInfo("git") { WorkingDirectory = path, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        start.Environment["GIT_CONFIG_NOSYSTEM"] = "1";
+        start.Environment["GIT_CONFIG_GLOBAL"] = OperatingSystem.IsWindows() ? "NUL" : "/dev/null";
+        foreach (var arg in new[] { "-c", "safe.directory=" + path.Replace('\\', '/'), "--no-optional-locks", "merge-base", "--is-ancestor", ancestor, descendant }) start.ArgumentList.Add(arg);
+        using var process = Process.Start(start) ?? throw new ApiException(503, "git_unavailable", "Git is unavailable.");
+        var output = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        var error = process.StandardError.ReadToEndAsync(timeout.Token);
+        try { await process.WaitForExitAsync(timeout.Token); }
+        finally { if (!process.HasExited) process.Kill(entireProcessTree: true); await process.WaitForExitAsync(CancellationToken.None); }
+        await output; await error;
+        // 0 = ancestor, 1 = not an ancestor; anything else is a failure, never an answer.
+        return process.ExitCode switch { 0 => true, 1 => false, _ => throw new ApiException(409, "git_local_failed", "Local Git operation failed; reconcile the execution branch.") };
+    }
+
     public async Task<string> VerifyAsync(string path, string branch, CancellationToken ct)
     {
         // Validate the actual local ref before resolving its committed base.

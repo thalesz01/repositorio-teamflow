@@ -4,18 +4,18 @@ using TeamFlow.Api.Http;
 
 namespace TeamFlow.Api.Features.Integrations;
 
-public sealed record TextModelResult(string Text, int? InputTokens, int? OutputTokens, decimal? EstimatedCostUsd);
+public sealed record TextModelResult(string Text, int? InputTokens, int? OutputTokens, decimal? EstimatedCostUsd, int? CachedInputTokens = null);
 
-// AI provider boundary: Codex CLI is the only implementation; tests replace it with a double.
+// AI provider boundary: local CLI adapters support optional structured output; tests replace them with doubles.
 public interface ITextModel
 {
-    Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budgetUsd, CancellationToken ct);
+    Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budgetUsd, CancellationToken ct, string? responseSchema = null);
 }
 
 // Codex provides text decisions; the existing harness remains responsible for writes and tests.
 public sealed class CodexTextModel(IConfiguration configuration) : ITextModel
 {
-    public async Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budgetUsd, CancellationToken ct)
+    public async Task<TextModelResult> GenerateAsync(AgentProfile profile, string prompt, decimal budgetUsd, CancellationToken ct, string? responseSchema = null)
     {
         if (!configuration.GetValue<bool>("Codex:EnableRequests"))
             throw new ApiException(503, "provider_disabled", "Codex CLI execution is disabled.");
@@ -41,8 +41,10 @@ public sealed class CodexTextModel(IConfiguration configuration) : ITextModel
         };
         foreach (var argument in new[] { "--no-daemon", "exec", "--ignore-user-config", "--ignore-rules", "--ephemeral",
             "--skip-git-repo-check", "--sandbox", "read-only", "--disable", "shell_tool", "--disable", "unified_exec",
-            "--color", "never", "--output-last-message", answer }) start.ArgumentList.Add(argument);
+            "--color", "never", "--json", "--output-last-message", answer }) start.ArgumentList.Add(argument);
         if (profile.Model != "default") { start.ArgumentList.Add("--model"); start.ArgumentList.Add(profile.Model); }
+        if (profile.ReasoningEffort is { } effort) { start.ArgumentList.Add("--config"); start.ArgumentList.Add("model_reasoning_effort=" + System.Text.Json.JsonSerializer.Serialize(effort)); }
+        if (responseSchema is not null) { start.ArgumentList.Add("--output-schema"); start.ArgumentList.Add(Path.Combine(directory, "schema.json")); }
         start.ArgumentList.Add("-");
         // Only the local login environment is inherited; server credentials are not passed to the CLI.
         start.Environment.Clear();
@@ -52,8 +54,10 @@ public sealed class CodexTextModel(IConfiguration configuration) : ITextModel
         timeout.CancelAfter(TimeSpan.FromSeconds(profile.TimeoutSeconds));
         try
         {
+            if (responseSchema is not null) await File.WriteAllTextAsync(Path.Combine(directory, "schema.json"), responseSchema, ct);
             using var process = Process.Start(start) ?? throw new InvalidOperationException("Cannot start Codex.");
-            var stdout = DrainAsync(process.StandardOutput);
+            var usage = new CliUsage.CodexCollector();
+            var stdout = ReadEventsAsync(process.StandardOutput, usage);
             var stderr = DrainAsync(process.StandardError);
             try
             {
@@ -73,13 +77,20 @@ public sealed class CodexTextModel(IConfiguration configuration) : ITextModel
             var text = await File.ReadAllTextAsync(answer, ct);
             if (string.IsNullOrWhiteSpace(text)) throw new ApiException(502, "provider_empty", "Codex returned no final message.");
             // CLI authentication does not expose monetary billing. Unknown consumption stays unknown.
-            return new(text, null, null, null);
+            return new(text, usage.Total.Input, usage.Total.Output, null, usage.Total.Cached);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         { throw new ApiException(504, "provider_timeout", "Codex execution timed out."); }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException)
         { throw new ApiException(502, "codex_failed", "Codex process or output is unavailable."); }
         finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    // The JSONL events carry the token counts; everything else they print is ignored.
+    private static async Task ReadEventsAsync(StreamReader reader, CliUsage.CodexCollector usage)
+    {
+        string? line;
+        while ((line = await reader.ReadLineAsync()) is not null) usage.Add(line);
     }
 
     private static async Task DrainAsync(StreamReader reader)

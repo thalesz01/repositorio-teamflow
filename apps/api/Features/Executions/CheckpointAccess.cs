@@ -56,7 +56,7 @@ public sealed class CheckpointAccess(AppDbContext db, LeaseAccess leases, TimePr
         {
             var saved = JsonSerializer.Deserialize<CheckpointContext>(previous.Context, JsonOptions)
                 ?? throw new InvalidDataException("Invalid persisted checkpoint.");
-            if (saved.Evidence.Any(e => !e.Succeeded) || !saved.Evidence.SequenceEqual(input.Context.Evidence.Take(sequence - 1))
+            if (saved.Evidence.Any(e => !e.Succeeded && !TestEvidence.IsRecoverable(e)) || !saved.Evidence.SequenceEqual(input.Context.Evidence.Take(sequence - 1))
                 || !saved.Pending.SequenceEqual(input.Context.Pending)) throw Conflict();
         }
         var checkpoint = new ExecutionCheckpoint
@@ -103,7 +103,7 @@ public sealed class CheckpointAccess(AppDbContext db, LeaseAccess leases, TimePr
         for (var i = 0; i < context.Evidence.Length; i++)
         {
             var evidence = context.Evidence[i];
-            if (evidence is null || evidence.Step != i + 1 || evidence.Tool is not ("read" or "write" or "test" or "rejected")
+            if (evidence is null || evidence.Step != i + 1 || evidence.Tool is not ("read" or "write" or "test" or "search" or "rejected")
                 || evidence.Detail is null || Encoding.UTF8.GetByteCount(evidence.Detail) > 16384
                 || (evidence.Path is not null && (evidence.Path.Length > 240 || evidence.Path.Contains(':')
                     || evidence.Path.StartsWith('/') || evidence.Path.StartsWith('\\')

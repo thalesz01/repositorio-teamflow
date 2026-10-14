@@ -15,7 +15,11 @@ public sealed class ModelTurn
     public decimal? EstimatedCostUsd { get; set; }
     public int? InputTokens { get; set; }
     public int? OutputTokens { get; set; }
+    // The part of InputTokens the provider served from its prompt cache; null when the CLI did not say.
+    public int? CachedInputTokens { get; set; }
     public string? Action { get; set; }
+    public string? FailureCode { get; set; }
+    public string? FailureType { get; set; }
 }
 
 public sealed record AgentToolPolicy(string[] Readable, string[] Editable,

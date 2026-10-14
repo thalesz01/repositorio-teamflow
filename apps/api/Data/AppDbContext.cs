@@ -96,14 +96,19 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         model.Entity<ModelTurn>().Property(t => t.EstimatedCostUsd).HasPrecision(20, 12);
         model.Entity<ModelTurn>().Property(t => t.RequestHash).HasMaxLength(64);
         model.Entity<ModelTurn>().Property(t => t.BillingMode).HasMaxLength(8).HasDefaultValue("api");
+        model.Entity<AgentProfile>().Property(p => p.ReasoningEffort).HasMaxLength(16);
+        model.Entity<WorkItem>().HasOne<AgentProfile>().WithMany().HasForeignKey(t => new { t.AgentProfileId, t.OrganizationId, t.ProjectId }).HasPrincipalKey(p => new { p.Id, p.OrganizationId, p.ProjectId }).OnDelete(DeleteBehavior.Restrict);
         model.Entity<AgentProfile>().Property(p => p.Provider).HasMaxLength(16).HasDefaultValue("codex");
         model.Entity<GitConnection>().Property(g => g.Provider).HasMaxLength(16).HasDefaultValue("local");
         model.Entity<GitConnection>().Property(g => g.LocalPath).HasMaxLength(1024);
         model.Entity<ModelTurn>().Property(t => t.State).HasMaxLength(16);
+        model.Entity<ModelTurn>().Property(t => t.FailureCode).HasMaxLength(64);
+        model.Entity<ModelTurn>().Property(t => t.FailureType).HasMaxLength(128);
         model.Entity<ModelTurn>().Property(t => t.Action).HasColumnType("jsonb");
         model.Entity<Execution>().Property(e => e.ReviewFeedback).HasMaxLength(6000);
         model.Entity<Execution>().HasOne<Execution>().WithMany().HasForeignKey(e => new { e.ParentExecutionId, e.OrganizationId, e.ProjectId })
             .HasPrincipalKey(e => new { e.Id, e.OrganizationId, e.ProjectId }).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<Execution>().Property(e => e.SkillName).HasMaxLength(80);
         model.Entity<Execution>().Property(e => e.ReviewState).HasMaxLength(32);
         model.Entity<Execution>().Property(e => e.ReviewHeadCommit).HasMaxLength(40);
         model.Entity<Execution>().Property(e => e.ReviewApprovedHead).HasMaxLength(40);
@@ -127,6 +132,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         model.Entity<GitConnection>().HasIndex(g => new { g.OrganizationId, g.ProjectId, g.LocalPath, g.BaseBranch }).IsUnique().HasFilter("\"RevokedAt\" IS NULL AND \"ForTasks\"");
         model.Entity<WorkItem>().HasOne<GitConnection>().WithMany().HasForeignKey(t => new { t.RepositoryConnectionId, t.OrganizationId, t.ProjectId })
             .HasPrincipalKey(g => new { g.Id, g.OrganizationId, g.ProjectId }).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<WorkItem>().Property(t => t.Kind).HasMaxLength(16).HasDefaultValue("change");
+        model.Entity<WorkItem>().HasOne<WorkItem>().WithMany().HasForeignKey(t => new { t.PreviousTaskId, t.OrganizationId, t.ProjectId })
+            .HasPrincipalKey(t => new { t.Id, t.OrganizationId, t.ProjectId }).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<WorkItem>().HasIndex(t => t.PreviousTaskId).IsUnique().HasFilter("\"PreviousTaskId\" IS NOT NULL");
         model.Entity<WorkItem>().Property(t => t.FolderPath).HasMaxLength(1024);
         model.Entity<WorkItem>().Property(t => t.BaseBranch).HasMaxLength(120);
         model.Entity<GitConnection>().Property(g => g.BaseBranch).HasMaxLength(120);

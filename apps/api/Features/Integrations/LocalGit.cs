@@ -8,7 +8,7 @@ namespace TeamFlow.Api.Features.Integrations;
 
 public sealed record PublicationFile(string Path, string Content, string Hash);
 public sealed record PublicationPlan(Guid ExecutionId, string BaseCommit, string Branch, string Title,
-    string Body, DateTimeOffset CreatedAt, PublicationFile[] Files);
+    string Body, DateTimeOffset CreatedAt, PublicationFile[] Files, bool Stacked = false);
 public sealed record PublishedPullRequest(long Number, string Url, string BaseCommit, string HeadCommit, string Branch);
 public sealed record GitReviewSnapshot(string HeadCommit, string BaseCommit, bool CiPassed,
     bool Merged, string? MergeCommit, string? MergeBaseParent);
@@ -42,6 +42,9 @@ public sealed class LocalGit(LocalRepository local) : IGitPublisher, IGitReview,
         if (execution != head) throw new ApiException(409, "branch_conflict", "The execution branch no longer points to the approved commit.");
         var current = await local.VerifyAsync(path, connection.BaseBranch, ct);
         if (current == head) return;
+        // A step stacked on the previous one can only be merged after that one, so the fast-forward stays in order.
+        if (snapshot.StackedOn is not null && current != snapshot.BaseCommit && await local.IsAncestorAsync(path, current, snapshot.BaseCommit, ct))
+            throw new ApiException(409, "previous_step_pending", "Conclude the previous step of the sequence first.");
         if (current != snapshot.BaseCommit) throw new ApiException(409, "base_changed", "The base branch moved after the review; refresh and review again.");
         var parent = (await RunAsync(path, ["rev-parse", head + "^"], null, null, ct)).Trim();
         if (parent != current) throw new ApiException(409, "merge_failed", "The approved commit is not a fast-forward of the base branch.");
@@ -62,6 +65,14 @@ public sealed class LocalGit(LocalRepository local) : IGitPublisher, IGitReview,
             await RunAsync(path, ["update-ref", "refs/heads/" + connection.BaseBranch, head, current], null, null, ct);
         }
         if (await local.VerifyAsync(path, connection.BaseBranch, ct) != head) throw new ApiException(409, "merge_failed", "The base branch did not move to the approved commit.");
+    }
+
+    /// <summary>The commit a TeamFlow branch points to, or null when it does not exist.</summary>
+    public async Task<string?> BranchHeadAsync(GitConnection connection, string branch, CancellationToken ct)
+    {
+        var path = local.AuthorizedPath(connection.OrganizationId, connection.ProjectId, connection.LocalPath);
+        var head = (await RunAsync(path, ["rev-parse", "--verify", "--quiet", "refs/heads/" + branch], null, null, ct, allowMissing: true)).Trim();
+        return GitRules.IsCommit(head) ? head : null;
     }
 
     public async Task PrepareBaseAsync(GitConnection connection, CancellationToken ct)
@@ -149,7 +160,8 @@ public sealed class LocalGit(LocalRepository local) : IGitPublisher, IGitReview,
     {
         Validate(connection, plan);
         var path = local.AuthorizedPath(connection.OrganizationId, connection.ProjectId, connection.LocalPath);
-        if (await local.VerifyAsync(path, connection.BaseBranch, ct) != plan.BaseCommit)
+        var tip = await local.VerifyAsync(path, connection.BaseBranch, ct);
+        if (tip != plan.BaseCommit && !(plan.Stacked && await local.IsAncestorAsync(path, tip, plan.BaseCommit, ct)))
             throw new ApiException(409, "base_changed", "Local base changed before publication.");
         var temporary = Path.Combine(Path.GetTempPath(), "teamflow-git-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temporary);
@@ -185,7 +197,7 @@ public sealed class LocalGit(LocalRepository local) : IGitPublisher, IGitReview,
             var existing = (await RunAsync(path, ["rev-parse", "--verify", "--quiet", reference], null, environment, ct, allowMissing: true)).Trim();
             if (existing.Length > 0 && existing != head) throw new ApiException(409, "branch_conflict", "Execution branch changed externally.");
             if (existing.Length == 0) await RunAsync(path, ["update-ref", "--stdin"],
-                $"start\nverify refs/heads/{connection.BaseBranch} {plan.BaseCommit}\ncreate {reference} {head}\nprepare\ncommit\n", environment, ct);
+                $"start\nverify refs/heads/{connection.BaseBranch} {tip}\ncreate {reference} {head}\nprepare\ncommit\n", environment, ct);
             return new(1, $"/api/v1/organizations/{connection.OrganizationId:D}/projects/{connection.ProjectId:D}/repository/local/reviews/{plan.ExecutionId:D}", plan.BaseCommit, head, plan.Branch);
         }
         finally
@@ -200,6 +212,9 @@ public sealed class LocalGit(LocalRepository local) : IGitPublisher, IGitReview,
         var path = local.AuthorizedPath(connection.OrganizationId, connection.ProjectId, connection.LocalPath);
         var head = (await RunAsync(path, ["rev-parse", "--verify", "refs/heads/" + snapshot.Branch], null, null, ct)).Trim();
         var currentBase = await local.VerifyAsync(path, connection.BaseBranch, ct);
+        // While the earlier steps of a sequence are not merged the branch tip lags this step's base; that is expected, not a change.
+        if (snapshot.StackedOn is not null && currentBase != snapshot.BaseCommit && await local.IsAncestorAsync(path, currentBase, snapshot.BaseCommit, ct))
+            currentBase = snapshot.BaseCommit;
         var parent = (await RunAsync(path, ["rev-parse", head + "^"], null, null, ct)).Trim();
         var verified = head == expectedHead && parent == snapshot.BaseCommit;
         // The caller also requires the persisted successful runner result for precisely this published head.

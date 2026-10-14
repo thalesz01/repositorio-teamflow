@@ -13,7 +13,7 @@ using TeamFlow.Api.Http;
 
 namespace TeamFlow.Api.Features.Executions;
 
-public sealed class ExecutionScheduler(AppDbContext db, TaskAccess tasks, TimeProvider clock, RepositoryAccess repositories, ProfileAccess profiles, PlanningAccess planning, MemorySearch memory, ExecutionTransfer transfer)
+public sealed class ExecutionScheduler(AppDbContext db, TaskAccess tasks, TimeProvider clock, RepositoryAccess repositories, ProfileAccess profiles, PlanningAccess planning, MemorySearch memory, ExecutionTransfer transfer, LocalCliAgents agents, LocalSkills skills)
 {
     private static readonly JsonSerializerOptions SnapshotOptions = new(JsonSerializerDefaults.Web)
     {
@@ -22,10 +22,10 @@ public sealed class ExecutionScheduler(AppDbContext db, TaskAccess tasks, TimePr
 
     public static ExecutionDto ToDto(Execution execution) => new(execution.Id, execution.TaskId, execution.State, execution.Attempt,
         execution.MaxAttempts, execution.MaxDurationSeconds, execution.MaxSteps, execution.MaxCostUsd, execution.CreatedAt,
-        execution.CancellationRequested, execution.FailureCode, execution.ParentExecutionId);
+        execution.CancellationRequested, execution.FailureCode, execution.ParentExecutionId, execution.SkillName);
 
     public async Task<ExecutionDto> ScheduleAsync(Guid organizationId, Guid projectId, Guid taskId, ExecutionInput request,
-        string? idempotencyKey, ClaimsPrincipal user, CancellationToken ct)
+        string? idempotencyKey, ClaimsPrincipal user, CancellationToken ct, RepositoryAccess.StackedBase? stackedOn = null)
     {
         var task = await tasks.RequireAsync(organizationId, projectId, taskId, user, ct);
         var key = Input.Required(idempotencyKey, "Idempotency-Key", 128);
@@ -38,7 +38,16 @@ public sealed class ExecutionScheduler(AppDbContext db, TaskAccess tasks, TimePr
         if (request.AgentProfileId is not null) payload += "|" + request.AgentProfileId.Value.ToString("D");
         if (request.ParentExecutionId is not null) payload += "|" + JsonSerializer.Serialize(new { request.ParentExecutionId, request.Feedback });
         else if (request.Feedback is not null) throw new ApiException(400, "feedback_parent_required", "Feedback requires a parent execution.");
+        if (request.Skill is not null) payload += "|skill:" + request.Skill;
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
+        // A task may be saved before its AI is available; running it needs the CLI installed, logged in and enabled.
+        // Checked before the transaction: it starts a local process, which must never run while a transaction is open.
+        var chosenProfile = request.AgentProfileId ?? task.AgentProfileId;
+        var provider = chosenProfile is null ? null
+            : await db.AgentProfiles.AsNoTracking().Where(p => p.Id == chosenProfile && p.IsTaskSelection).Select(p => p.Provider).SingleOrDefaultAsync(ct);
+        if (provider is not null) await agents.RequireReadyAsync(provider, ct);
+        // Reads one small file from the task folder or the user profile; it is stored with the execution, never re-read later.
+        var chosenSkill = request.Skill is null ? null : skills.Resolve(organizationId, projectId, task.FolderPath, request.Skill);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({taskId.ToString()}))", ct);
         var previous = await db.Executions.AsNoTracking().SingleOrDefaultAsync(e => e.OrganizationId == organizationId && e.TaskId == taskId && e.IdempotencyKey == key, ct);
@@ -50,7 +59,7 @@ public sealed class ExecutionScheduler(AppDbContext db, TaskAccess tasks, TimePr
         }
         await db.Entry(task).ReloadAsync(ct);
         TaskRules.RequireVersion(task, request.Version);
-        var selectedProfile = request.AgentProfileId;
+        var selectedProfile = request.AgentProfileId ?? task.AgentProfileId;
         Execution? parentExecution = null;
         if (request.ParentExecutionId is { } parentId)
         {
@@ -61,6 +70,12 @@ public sealed class ExecutionScheduler(AppDbContext db, TaskAccess tasks, TimePr
                 .OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id).Select(e => e.Id).FirstAsync(ct);
             if (latest != parentId || parent.ReviewState is "merged" or "merge_policy_unverified")
                 throw new ApiException(409, "feedback_parent_superseded", "Feedback requires the latest unmerged review.");
+            // Later steps were built on this step's commit: changing it would leave them on a result that no longer exists.
+            if (await db.WorkItems.AnyAsync(t => t.PreviousTaskId == taskId && db.Executions.Any(e => e.TaskId == t.Id), ct))
+                throw new ApiException(409, "next_step_started", "The next step of the sequence already started; correct this step before running the next one.");
+            // A correction of a sequence step keeps the base it was built on.
+            if (JsonSerializer.Deserialize<RepositorySnapshot>(parent.RepositorySnapshot ?? "null", SnapshotOptions) is { StackedOn: { } stackedParent } parentSnapshot)
+                stackedOn = new(stackedParent, parentSnapshot.BaseCommit);
             TaskAccess.ApplyFeedback(task, request.Feedback ?? "", parent.PullRequestUrl ?? throw new InvalidDataException("Missing parent PR."));
             selectedProfile ??= parent.AgentProfileId;
             parentExecution = parent;
@@ -68,6 +83,9 @@ public sealed class ExecutionScheduler(AppDbContext db, TaskAccess tasks, TimePr
         if (task.Stage != TaskStage.Ready || task.AcceptanceCriteria.Length == 0)
             throw new ApiException(409, "task_not_ready", "Task must be ready with acceptance criteria.");
         await tasks.RequireDependenciesCompleteAsync(task, ct);
+        // Running a continuation alone would fork from the branch tip and miss the previous step's work; the sequence runs it on top of that work.
+        if (task.PreviousTaskId is { } before && stackedOn is null && await db.WorkItems.AnyAsync(t => t.Id == before && t.Stage != TaskStage.Done, ct))
+            throw new ApiException(409, "previous_step_pending", "Run this task through its sequence, or conclude the previous step first.");
         if (await db.Executions.AnyAsync(e => e.TaskId == taskId && (e.State == ExecutionState.Queued || e.State == ExecutionState.Leased), ct))
             throw new ApiException(409, "execution_active", "Task already has an active execution.");
         if (selectedProfile is { } profileId) await profiles.RequireActiveAsync(organizationId, projectId, profileId, ct);
@@ -93,9 +111,12 @@ public sealed class ExecutionScheduler(AppDbContext db, TaskAccess tasks, TimePr
             MaxCostUsd = request.MaxCostUsd,
             AgentProfileId = selectedProfile,
             ParentExecutionId = request.ParentExecutionId,
-            ReviewFeedback = request.Feedback
+            ReviewFeedback = request.Feedback,
+            // A correction keeps the skill of the run it fixes unless another one is chosen.
+            SkillName = chosenSkill?.Name ?? parentExecution?.SkillName,
+            SkillSnapshot = chosenSkill is null ? parentExecution?.SkillSnapshot : JsonSerializer.Serialize(chosenSkill, SnapshotOptions)
         };
-        execution.RepositorySnapshot = await repositories.SnapshotAsync(organizationId, projectId, execution.Id, ct, task.RepositoryConnectionId);
+        execution.RepositorySnapshot = await repositories.SnapshotAsync(organizationId, projectId, execution.Id, ct, task.RepositoryConnectionId, stackedOn);
         if (task.AnalysisId is { } analysisId)
             execution.MemoryContext = JsonSerializer.Serialize(await planning.ContextAsync(organizationId, projectId, analysisId, user, ct), MemorySearch.JsonOptions);
         else if (parentExecution?.MemoryContext is { } inheritedMemory)

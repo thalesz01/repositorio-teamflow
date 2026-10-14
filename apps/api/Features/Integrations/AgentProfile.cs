@@ -8,6 +8,8 @@ public sealed class AgentProfile
     public string Provider { get; set; } = "codex";
     public string Name { get; set; } = "";
     public string Model { get; set; } = "";
+    public string? ReasoningEffort { get; set; }
+    public bool IsTaskSelection { get; set; }
     public int MaxInputBytes { get; set; }
     public int MaxOutputTokens { get; set; }
     public int TimeoutSeconds { get; set; }

@@ -18,7 +18,7 @@ public sealed class ExecutionResultAccess(AppDbContext db, LeaseAccess leases, T
         if (input.OperationId == Guid.Empty || input.CheckpointSequence < 0
             || string.IsNullOrWhiteSpace(input.Reason) || input.Reason.Length > 64
             || input.Reason.Any(c => c != '_' && (c < 'a' || c > 'z'))
-            || input.Validated != (input.Reason == "tests_passed"))
+            || input.Validated != (input.Reason is "tests_passed" or "analysis_answered"))
             throw new ApiException(400, "invalid_execution_result", "Unsupported execution result.");
         var execution = await leases.RequireRecordedOwnerAsync(id, input.LeaseToken, user, ct);
         var hash = Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new
@@ -40,9 +40,9 @@ public sealed class ExecutionResultAccess(AppDbContext db, LeaseAccess leases, T
             if (checkpoint is null || checkpoint.Sequence != input.CheckpointSequence) throw InvalidEvidence();
             var context = JsonSerializer.Deserialize<CheckpointContext>(checkpoint.Context, new JsonSerializerOptions(JsonSerializerDefaults.Web))
                 ?? throw new InvalidDataException("Invalid persisted checkpoint.");
-            var edit = Array.FindLastIndex(context.Evidence, e => e.Tool == "write" && e.Succeeded);
-            if (edit < 0 || !context.Evidence.Skip(edit + 1).Any(e => e.Tool == "test" && e.Succeeded)
-                || context.Evidence.Any(e => !e.Succeeded) || context.Pending.Length != 0) throw InvalidEvidence();
+            var kind = await db.WorkItems.AsNoTracking().Where(t => t.Id == execution.TaskId).Select(t => t.Kind).SingleAsync(ct);
+            if (input.Reason == "analysis_answered" ? kind != "analysis" || !TestEvidence.IsAnswered(context) || !await HasAnswerAsync(id, ct)
+                : kind == "analysis" || !TestEvidence.IsValidated(context)) throw InvalidEvidence();
             if (await db.ModelTurns.AnyAsync(t => t.ExecutionId == id && (t.State != "completed" || (t.BillingMode == "api" && t.EstimatedCostUsd == null)), ct))
                 throw new ApiException(409, "model_outcome_uncertain", "Cannot validate an execution with unknown model consumption.");
             if (await db.ModelTurns.Where(t => t.ExecutionId == id).SumAsync(t => t.EstimatedCostUsd ?? t.ReservedUsd, ct) > execution.MaxCostUsd)
@@ -58,6 +58,7 @@ public sealed class ExecutionResultAccess(AppDbContext db, LeaseAccess leases, T
         tracked.State = cancelled ? ExecutionState.Cancelled : input.Validated ? ExecutionState.Succeeded : ExecutionState.Failed;
         tracked.FailureCode = input.Validated || cancelled ? null : input.Reason;
         if (!input.Validated) await tasks.ApplyExecutionEndAsync(execution.OrganizationId, execution.ProjectId, execution.TaskId, cancelled, ct);
+        else if (input.Reason == "analysis_answered") await tasks.ApplyAnalysisAnsweredAsync(execution.OrganizationId, execution.ProjectId, execution.TaskId, ct);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         // Success is the harness result. The task remains Execution until PR publication/review workflow.
@@ -70,6 +71,21 @@ public sealed class ExecutionResultAccess(AppDbContext db, LeaseAccess leases, T
             return new(id, input.OperationId, saved.State == ExecutionState.Succeeded,
                 saved.ResultCode ?? throw new InvalidDataException("Missing result code."), saved.ResultCheckpointSequence ?? 0);
         }
+    }
+
+    // The answer is the content of the closing "finish" action; an analysis without one has produced nothing to show.
+    private async Task<bool> HasAnswerAsync(Guid id, CancellationToken ct)
+    {
+        var last = await db.ModelTurns.AsNoTracking().Where(t => t.ExecutionId == id && t.State == "completed")
+            .OrderByDescending(t => t.Attempt).ThenByDescending(t => t.Sequence).Select(t => t.Action).FirstOrDefaultAsync(ct);
+        if (last is null) return false;
+        try
+        {
+            using var action = JsonDocument.Parse(last);
+            return action.RootElement.TryGetProperty("tool", out var tool) && tool.GetString() == "finish"
+                && action.RootElement.TryGetProperty("content", out var content) && !string.IsNullOrWhiteSpace(content.GetString());
+        }
+        catch (JsonException) { return false; }
     }
 
     private static ApiException InvalidEvidence() => new(409, "validation_missing", "Result lacks the required current checkpoint evidence.");
