@@ -20,4 +20,9 @@ public sealed class AgentProfile
 
 public sealed record ProfileDto(Guid Id, string Name, string Provider, string Model, string[] Capabilities, string[] Tools,
     int MaxInputBytes, int MaxOutputTokens, int TimeoutSeconds, decimal InputUsdPerMillionTokens,
-    decimal OutputUsdPerMillionTokens, DateTimeOffset? RevokedAt);
+    decimal OutputUsdPerMillionTokens, DateTimeOffset? RevokedAt)
+{
+    public static ProfileDto From(AgentProfile profile) => new(profile.Id, profile.Name, profile.Provider, profile.Model,
+        ["textGeneration"], [], profile.MaxInputBytes, profile.MaxOutputTokens, profile.TimeoutSeconds,
+        profile.InputUsdPerMillionTokens, profile.OutputUsdPerMillionTokens, profile.RevokedAt);
+}

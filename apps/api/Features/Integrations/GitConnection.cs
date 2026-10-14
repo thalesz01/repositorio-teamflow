@@ -16,7 +16,11 @@ public sealed class GitConnection
     public DateTimeOffset? RevokedAt { get; set; }
 }
 
-public sealed record GitDto(Guid Id, string Provider, long RepositoryId, string RemoteUrl, string BaseBranch, string BaseCommit, Guid Version, DateTimeOffset? RevokedAt);
+public sealed record GitDto(Guid Id, string Provider, long RepositoryId, string RemoteUrl, string BaseBranch, string BaseCommit, Guid Version, DateTimeOffset? RevokedAt)
+{
+    public static GitDto From(GitConnection connection) => new(connection.Id, connection.Provider, connection.RepositoryId,
+        GitRules.Url(connection), connection.BaseBranch, connection.BaseCommit, connection.Version, connection.RevokedAt);
+}
 public sealed record RepositorySnapshot(Guid ConnectionId, Guid ConnectionVersion, long RepositoryId, string RemoteUrl, string BaseBranch, string BaseCommit, string Branch, string? LocalPath = null, Guid? StackedOn = null);
 // The runner only accepts the literal "local" grant: checkout reads the authorized folder, no credential exists.
 public sealed record CheckoutGrant(string Token, DateTimeOffset ExpiresAt);

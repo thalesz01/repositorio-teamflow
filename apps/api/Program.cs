@@ -74,6 +74,8 @@ builder.Services.AddScoped<RunnerService>();
 builder.Services.AddHostedService<LocalRunnerSupervisor>();
 builder.Services.AddScoped<RepositoryAccess>();
 builder.Services.AddScoped<ProfileAccess>();
+builder.Services.AddScoped<ProfileService>();
+builder.Services.AddScoped<RepositoryService>();
 builder.Services.AddScoped<CodexMachine>();
 builder.Services.AddScoped<LocalRepository>();
 builder.Services.AddScoped<LocalGit>();

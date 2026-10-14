@@ -49,7 +49,7 @@ public static class ApiClient
         };
         db.AgentProfiles.Add(profile);
         await db.SaveChangesAsync();
-        return ProfileEndpoints.ToDto(profile);
+        return ProfileDto.From(profile);
     }
 
     public static string TasksPath(ProjectDto project) => $"/api/v1/organizations/{project.OrganizationId}/projects/{project.Id}/tasks";
