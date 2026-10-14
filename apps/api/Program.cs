@@ -70,6 +70,7 @@ builder.Services.AddScoped<ExecutionKnowledge>();
 builder.Services.AddHostedService<PublicationWorker>();
 builder.Services.AddScoped<ExecutionResultAccess>();
 builder.Services.AddScoped<RunnerAccess>();
+builder.Services.AddScoped<RunnerService>();
 builder.Services.AddHostedService<LocalRunnerSupervisor>();
 builder.Services.AddScoped<RepositoryAccess>();
 builder.Services.AddScoped<ProfileAccess>();
