@@ -11,7 +11,7 @@ public static class TaskEndpoints
         var group = routes.MapGroup("/api/v1/organizations/{organizationId:guid}/projects/{projectId:guid}/tasks").WithTags("Tasks").RequireAuthorization();
         group.MapGet("/", ListAsync).Produces<PageResult<TaskDto>>();
         group.MapPost("/", CreateAsync).Produces<TaskDto>(201);
-        group.MapGet("/{taskId:guid}", GetAsync);
+        group.MapGet("/{taskId:guid}", GetAsync).Produces<TaskDto>();
         group.MapPut("/{taskId:guid}", UpdateAsync).Produces<TaskDto>();
         group.MapPost("/{taskId:guid}/transition", TransitionAsync).Produces<TaskDto>();
         group.MapPost("/{taskId:guid}/sequence/start", StartSequenceAsync).Produces<TaskDto[]>();
