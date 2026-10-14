@@ -23,8 +23,11 @@ public interface IAgentCheckpoint
     Task SaveAsync(PortableContext context, CancellationToken ct);
 }
 
+/// <summary>Change edits and tests; Analysis only reads and ends with an answer (ADR 0014).</summary>
+public enum HarnessMode { Change, Analysis }
+
 // No HTTP, provider credentials or business state transitions belong in this motor.
-public sealed class AgentHarness(IAgentModel model, IAgentCheckpoint checkpoints, WorkspaceTools tools)
+public sealed class AgentHarness(IAgentModel model, IAgentCheckpoint checkpoints, WorkspaceTools tools, HarnessMode mode = HarnessMode.Change)
 {
     public async Task<HarnessResult> RunAsync(PortableContext context, int maxSteps, TimeSpan duration, CancellationToken ct)
     {
@@ -36,22 +39,27 @@ public sealed class AgentHarness(IAgentModel model, IAgentCheckpoint checkpoints
         using var timeout = new CancellationTokenSource(duration);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
         await checkpoints.SaveAsync(context, linked.Token);
-        if (context.Evidence.Any(e => !e.Succeeded)) return new(false, "tool_failed", context);
+        // A read of a file the policy does not list is a mistake the agent can recover from when it is only answering a question.
+        if (mode == HarnessMode.Change && context.Evidence.Any(e => !e.Succeeded && !TestEvidence.IsRecoverable(e))) return new(false, "tool_failed", context);
         for (var step = context.Evidence.Length + 1; step <= maxSteps; step++)
         {
             linked.Token.ThrowIfCancellationRequested();
             var action = await model.NextAsync(context, linked.Token);
+            if (action.Tool == "finish" && mode == HarnessMode.Analysis)
+            {
+                var answered = !string.IsNullOrWhiteSpace(action.Content) && context.Evidence.Any(e => e.Tool is "read" or "search" && e.Succeeded)
+                    && !context.Evidence.Any(e => e.Tool is "write" or "test");
+                return new HarnessResult(answered, answered ? "analysis_answered" : "validation_missing", context);
+            }
             if (action.Tool == "finish")
             {
-                var lastEdit = Array.FindLastIndex(context.Evidence, e => e.Tool == "write" && e.Succeeded);
-                var validated = lastEdit >= 0 && context.Evidence.Skip(lastEdit + 1).Any(e => e.Tool == "test" && e.Succeeded)
-                    && context.Evidence.All(e => e.Succeeded) && context.Pending.Length == 0;
+                var validated = TestEvidence.IsValidated(context);
                 return new HarnessResult(validated, validated ? "tests_passed" : "validation_missing", context);
             }
             var evidence = await tools.ExecuteAsync(step, action, linked.Token);
             context = context with { Evidence = [.. context.Evidence, evidence] };
             await checkpoints.SaveAsync(context, linked.Token);
-            if (!evidence.Succeeded) return new HarnessResult(false, "tool_failed", context);
+            if (mode == HarnessMode.Change && !evidence.Succeeded && !TestEvidence.IsRecoverable(evidence)) return new HarnessResult(false, "tool_failed", context);
         }
         return new HarnessResult(false, "step_limit", context);
     }
@@ -71,7 +79,7 @@ public sealed class WorkspaceTools
     private readonly HashSet<string> _created = new(StringComparer.Ordinal);
 
     // Paths and test commands come from trusted controller policy, never a model or repository file.
-    public WorkspaceTools(ExecutionWorkspace workspace, ISandbox sandbox, string[] readable, string[] editable, SandboxCommand test, string[]? create = null)
+    public WorkspaceTools(ExecutionWorkspace workspace, ISandbox sandbox, string[] readable, string[] editable, SandboxCommand test, string[]? create = null, bool testsAllowed = true)
     {
         if (readable.Length > 100 || editable.Length > 100 || test.Timeout > TimeSpan.FromMinutes(5))
             throw new ArgumentException("Tool policy exceeds limits.");
@@ -91,7 +99,10 @@ public sealed class WorkspaceTools
         _readable = new HashSet<string>(readable, StringComparer.Ordinal);
         _editable = new HashSet<string>(editable, StringComparer.Ordinal);
         _test = test with { ReadOnlyWorkspace = true };
+        _testsAllowed = testsAllowed;
     }
+
+    private readonly bool _testsAllowed;
 
     // A new file needs a matching Create pattern and an explicit "missing" hash; ordinary and build folders stay off limits.
     private bool MayCreate(AgentAction action)
@@ -104,13 +115,47 @@ public sealed class WorkspaceTools
         return _creatable.Any(pattern => pattern.IsMatch(path));
     }
 
+    // Looks for a literal text in the readable files (and the ones this execution created). Nothing outside the policy is searched.
+    private ToolEvidence Search(int step, string? query)
+    {
+        var needle = query?.Trim() ?? "";
+        if (needle.Length is < 2 or > 200) return new(step, "search", null, false, "invalid_query");
+        var matches = new List<string>();
+        var scanned = 0;
+        foreach (var path in _readable.Concat(_created).Distinct().Order(StringComparer.Ordinal))
+        {
+            if (matches.Count >= 40) break;
+            string text;
+            try
+            {
+                var full = _workspace.Resolve(path);
+                var info = new FileInfo(full);
+                if (!info.Exists || info.Length > FileLimit) continue;
+                text = File.ReadAllText(full);
+            }
+            catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or ArgumentException or InvalidDataException) { continue; }
+            scanned++;
+            var lines = text.Split('\n');
+            for (var line = 0; line < lines.Length && matches.Count < 40; line++)
+                if (lines[line].Contains(needle, StringComparison.OrdinalIgnoreCase))
+                {
+                    var shown = lines[line].Trim();
+                    matches.Add($"{path}:{line + 1}: {(shown.Length > 160 ? shown[..160] : shown)}");
+                }
+        }
+        var detail = matches.Count == 0 ? $"no matches in {scanned} readable files" : string.Join('\n', matches);
+        return new(step, "search", null, true, detail.Length > 6000 ? detail[..6000] : detail);
+    }
+
     public async Task<ToolEvidence> ExecuteAsync(int step, AgentAction action, CancellationToken ct)
     {
+        if (action.Tool == "search") return Search(step, action.Content);
+        if (action.Tool == "test" && !_testsAllowed) return new(step, "rejected", null, false, "tool_or_path_denied");
         if (action.Tool == "test")
         {
             var result = await _sandbox.ExecuteAsync(_workspace, _test, ct);
             return new(step, "test", null, result.ExitCode == 0 && !result.TimedOut && !result.OutputTruncated,
-                JsonSerializer.Serialize(new { result.ExitCode, result.TimedOut, result.OutputTruncated, _test.Executable, _test.Arguments, _test.Timeout, _test.ReadOnlyWorkspace, environment = _sandbox.Manifest }));
+                JsonSerializer.Serialize(new { result.ExitCode, result.TimedOut, result.OutputTruncated, StandardOutput = TestOutput.Sanitize(result.StandardOutput), StandardError = TestOutput.Sanitize(result.StandardError), _test.Executable, _test.Arguments, _test.Timeout, _test.ReadOnlyWorkspace, environment = _sandbox.Manifest }));
         }
         if (action.Path is null || action.Tool is not ("read" or "write")
             || !((action.Tool == "read" ? _readable : _editable).Contains(action.Path) || _created.Contains(action.Path) || MayCreate(action)))

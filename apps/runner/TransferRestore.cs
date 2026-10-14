@@ -15,7 +15,8 @@ public static class TransferRestore
         var transfer = snapshot.Value.Deserialize<PortableTransfer>(new JsonSerializerOptions(JsonSerializerDefaults.Web))
             ?? throw new InvalidDataException("Invalid portable transfer.");
         if (transfer.ParentExecutionId == Guid.Empty || transfer.BaseCommit != expectedBase || transfer.Context.BaseCommit != expectedBase
-            || transfer.Writes.Length > 100 || transfer.Context.Pending.Length != 0 || transfer.Context.Evidence.Any(e => !e.Succeeded))
+            // A test that failed and was fixed before the last passing test is accepted, exactly as the API accepts it when it builds the transfer.
+            || transfer.Writes.Length > 100 || !TestEvidence.IsValidated(transfer.Context))
             throw new InvalidDataException("Transfer does not match the authorized base and confirmed evidence.");
         foreach (var write in transfer.Writes)
         {

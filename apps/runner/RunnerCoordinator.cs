@@ -39,11 +39,19 @@ public sealed class RunnerCoordinator(IRunnerControl control, IRepositoryCheckou
             if (prepared.BaseCommit != source.BaseCommit || prepared.Branch != $"teamflow/{message.ExecutionId:N}")
                 throw new InvalidDataException("Checkout does not match the scheduled base or branch.");
             var checkpoints = new TrackingCheckpoint(new RemoteAgentCheckpoint(control, message), c => context = c);
-            var effective = ToolPolicyPatterns.Expand(policy, workspace);
-            var tools = new WorkspaceTools(workspace, activeSandbox, effective.Readable, effective.Editable, effective.Test, effective.Create);
+            // An analysis only reads: nothing is editable or creatable and the test command never runs.
+            var analysis = message.Snapshot.Kind == "analysis";
+            RunnerToolPolicy Effective() => analysis ? ToolPolicyPatterns.Expand(policy, workspace) with { Editable = [], Create = null } : ToolPolicyPatterns.Expand(policy, workspace);
+            WorkspaceTools Tools(RunnerToolPolicy value) => new(workspace, activeSandbox, value.Readable, value.Editable, value.Test, value.Create, testsAllowed: !analysis);
+            var effective = Effective();
+            var tools = Tools(effective);
             await TransferRestore.ApplyAsync(message.Transfer, source.BaseCommit, workspace, tools, running.Token);
             context = await CheckpointRestore.RestoreAsync(context, await control.ReadRecoveryAsync(message, running.Token), workspace, tools, running.Token);
-            var harness = new AgentHarness(new RemoteAgentModel(control, message, effective), checkpoints, tools);
+            // Files restored from the parent execution or an earlier attempt are part of the base now. Patterns are expanded again so the
+            // model is offered them as ordinary files to read and edit, not only as "new files it may create".
+            effective = Effective();
+            tools = Tools(effective);
+            var harness = new AgentHarness(new RemoteAgentModel(control, message, effective), checkpoints, tools, analysis ? HarnessMode.Analysis : HarnessMode.Change);
             result = await harness.RunAsync(context, message.Limits.MaxSteps,
                 message.DeadlineAt - DateTimeOffset.UtcNow, running.Token);
         }
@@ -55,7 +63,7 @@ public sealed class RunnerCoordinator(IRunnerControl control, IRepositoryCheckou
         {
             result = new(false, error.Code, context);
         }
-        catch (Exception error) when (error is HttpRequestException or IOException or ArgumentException or InvalidOperationException or JsonException)
+        catch (Exception error) when (error is HttpRequestException or IOException or ArgumentException or InvalidOperationException or JsonException or InvalidDataException)
         {
             result = new(false, "runner_failed", context);
         }

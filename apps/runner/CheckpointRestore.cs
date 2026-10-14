@@ -27,11 +27,11 @@ public static class CheckpointRestore
             var restored = await tools.ExecuteAsync(write.Step, new("write", write.Path, write.Content, write.ExpectedHash), ct);
             if (!restored.Succeeded || restored.Hash != write.Hash) throw new InvalidDataException("Recovery write failed.");
         }
-        if (saved.Evidence.Any(e => !e.Succeeded)) return saved;
-        if (saved.Evidence.Any(e => e.Tool == "test" && e.Succeeded))
+        if (saved.Evidence.Any(e => !e.Succeeded && !TestEvidence.IsRecoverable(e))) return saved;
+        if (TestEvidence.IsValidated(saved))
         {
             var verified = await tools.ExecuteAsync(saved.Evidence.Length + 1, new("test"), ct);
-            if (!verified.Succeeded || verified.Detail != saved.Evidence.Last(e => e.Tool == "test" && e.Succeeded).Detail) throw new InvalidDataException("Recovered checkout failed validation.");
+            if (!verified.Succeeded || !TestEvidence.SameValidation(saved.Evidence.Last(e => e.Tool == "test" && e.Succeeded).Detail, verified.Detail)) throw new InvalidDataException("Recovered checkout failed validation.");
         }
         return saved;
     }

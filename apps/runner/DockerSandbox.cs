@@ -27,7 +27,7 @@ public sealed partial class DockerSandbox(SandboxLimits? limits = null) : ISandb
             || command.Timeout > TimeSpan.FromHours(1) || command.Arguments.Length > 200)
             throw new ArgumentException("Invalid sandbox command or timeout.");
         if (_limits.MemoryMb is < 256 or > 2048 || _limits.Cpus is < 1 or > 4 || _limits.Pids is < 128 or > 512
-            || !Regex.IsMatch(_limits.Image, @"\A[a-zA-Z0-9./:_-]+@sha256:[a-f0-9]{64}\z", RegexOptions.CultureInvariant))
+            || !Regex.IsMatch(_limits.Image, @"\A(?:[a-zA-Z0-9./:_-]+@)?sha256:[a-f0-9]{64}\z", RegexOptions.CultureInvariant))
             throw new ArgumentException("Sandbox image must be pinned by digest and resources bounded.");
         // Validate the mount again immediately before handing it to Docker.
         workspace.Resolve(".teamflow-probe");

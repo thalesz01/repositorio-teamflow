@@ -7,7 +7,7 @@ using System.Security.Cryptography;
 namespace TeamFlow.Runner;
 
 public sealed record ExecutionLimits(int MaxDurationSeconds, int MaxAttempts, int MaxSteps, decimal MaxCostUsd);
-public sealed record TaskSnapshot(string Title, string Description, string[] AcceptanceCriteria, Guid Version);
+public sealed record TaskSnapshot(string Title, string Description, string[] AcceptanceCriteria, Guid Version, string? Kind = null);
 public sealed record ExecutionMessage(int SchemaVersion, Guid ExecutionId, Guid TaskId, Guid OrganizationId, Guid ProjectId,
     Guid WorkerId, Guid LeaseToken, DateTimeOffset LeaseExpiresAt, DateTimeOffset DeadlineAt, int Attempt,
     TaskSnapshot Snapshot, ExecutionLimits Limits, JsonElement? Repository, Guid? AgentProfileId, JsonElement? Memory = null, JsonElement? Transfer = null);
@@ -135,7 +135,7 @@ public sealed class RunnerClient : IRunnerControl, IDisposable
         var reply = await response.Content.ReadFromJsonAsync<RemoteModelReply>(cancellationToken: ct)
             ?? throw new InvalidDataException("Missing model response.");
         if (reply.OperationId != operationId || reply.Action is null || reply.EstimatedCostUsd is < 0
-            || reply.Action.Tool is not ("read" or "write" or "test" or "finish"))
+            || reply.Action.Tool is not ("read" or "write" or "test" or "search" or "finish"))
             throw new InvalidDataException("Unsupported model action acknowledgement.");
         return reply;
     }
