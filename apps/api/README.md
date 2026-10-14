@@ -36,6 +36,8 @@ A suíte inclui testes HTTP e integração com PostgreSQL real para equipes, tar
 
 Cada feature em `Features/<Nome>/` separa três papéis. `<Nome>Endpoints.cs` só declara rotas e handlers nomeados: faz binding, chama um serviço e escolhe o status HTTP. `<Nome>Service.cs` (ou a classe `*Access` já existente da feature) guarda validações, regras e consultas, recebe `ClaimsPrincipal` e `CancellationToken` e não conhece `IResult`. `<Nome>Contracts.cs` guarda os DTOs, com `From(entidade)` quando houver mapeamento. Handlers que retornam `IResult` precisam de `.Produces<T>()` para o OpenAPI manter o schema da resposta. Tarefas de referência: T62 (Tasks) e T63.
 
+Estados e papéis com valores fechados são enums, mapeados no banco com `HasConversion<LowercaseEnumConverter<T>>()` para gravar o mesmo texto minúsculo que o JSON usa. Ao consultar um enum com `SingleOrDefault`, projete `(T?)` para distinguir "não encontrado" do primeiro valor do enum. Valores com sublinhado ou vindos de fronteira externa continuam string até haver decisão sobre o nome no fio. Referência: T64.
+
 ## Executar
 
 Configure a conexão no terminal, então:

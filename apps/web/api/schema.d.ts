@@ -3182,7 +3182,7 @@ export interface components {
             /** Format: uuid */
             userId: string;
             email: string;
-            role: string;
+            role: components["schemas"]["MemberRole"];
         };
         MemberInput: {
             email: string;
@@ -3282,7 +3282,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
-            role: string;
+            role: components["schemas"]["MemberRole"];
         };
         OrganizationInput: {
             name: string;
@@ -3584,8 +3584,7 @@ export interface components {
             baseBranch?: null | string;
             /** Format: uuid */
             agentProfileId?: null | string;
-            /** @default change */
-            kind: string;
+            kind?: components["schemas"]["TaskKind"];
             /** Format: uuid */
             previousTaskId?: null | string;
             /** @default false */
@@ -3604,7 +3603,7 @@ export interface components {
             baseBranch?: null | string;
             stage?: null | components["schemas"]["TaskStage"];
             ai?: null | components["schemas"]["AgentChoice"];
-            kind?: null | string;
+            kind?: null | components["schemas"]["TaskKind"];
             /** Format: uuid */
             previousTaskId?: null | string;
         };
@@ -3631,6 +3630,13 @@ export interface components {
             /** Format: uuid */
             projectId: string;
         };
+        /** @enum {unknown} */
+        MemberRole: "member" | "owner";
+        /**
+         * @default change
+         * @enum {unknown}
+         */
+        TaskKind: "change" | "analysis";
     };
     responses: never;
     parameters: never;
